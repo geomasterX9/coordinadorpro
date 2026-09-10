@@ -450,7 +450,12 @@ function Login() {
     setError(""); setInfo(""); setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setError("Correo o contraseña incorrectos, o tu cuenta aún no ha sido invitada.");
+    if (error) {
+      // Detalle técnico temporal para diagnosticar el problema de acceso reportado.
+      // Quitar el "(detalle: ...)" una vez resuelto.
+      console.error("Supabase signInWithPassword error:", error);
+      setError(`Correo o contraseña incorrectos, o tu cuenta aún no ha sido invitada. (detalle: ${error.message}${error.status ? ` · código ${error.status}` : ""})`);
+    }
   };
 
   const handleForgot = async () => {
