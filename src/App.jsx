@@ -607,25 +607,26 @@ function AppShell({ session }) {
 
   useEffect(() => {
     (async () => {
-      const defaultTeachers = seedTeachers();
       const [tch, vis, obs, evp, inc, cteData, plan] = await Promise.all([
-        loadKey(KEYS.teachers, defaultTeachers),
+        loadKey(KEYS.teachers, null),
         loadKey(KEYS.visits, null),
         loadKey(KEYS.observations, []),
-        loadKey(KEYS.evalPeriods, seedEvalPeriods()),
+        loadKey(KEYS.evalPeriods, null),
         loadKey(KEYS.incidencias, []),
         loadKey(KEYS.cte, null),
         loadKey(KEYS.planeaciones, null),
       ]);
-      const finalTeachers = (tch && tch.length ? tch : defaultTeachers).map(normalizeTeacher);
-      const finalVisits = vis && vis.length ? vis : seedVisits(finalTeachers);
-      const finalPlaneaciones = plan && plan.length ? plan : seedPlaneaciones(finalTeachers);
+      // null = nunca se guardó (primera vez, usar datos de ejemplo).
+      // Un arreglo vacío es una elección deliberada del usuario y debe respetarse.
+      const finalTeachers = (tch !== null ? tch : seedTeachers()).map(normalizeTeacher);
+      const finalVisits = vis !== null ? vis : seedVisits(finalTeachers);
+      const finalPlaneaciones = plan !== null ? plan : seedPlaneaciones(finalTeachers);
       setTeachers(finalTeachers);
       setVisits(finalVisits);
       setObservations(obs || []);
-      setEvalPeriods(evp && evp.length ? evp : seedEvalPeriods());
+      setEvalPeriods(evp !== null ? evp : seedEvalPeriods());
       setIncidencias((inc || []).map(normalizeIncidencia));
-      setCte(cteData && cteData.length ? cteData : seedCte());
+      setCte(cteData !== null ? cteData : seedCte());
       setPlaneaciones(finalPlaneaciones);
       setReady(true);
     })();
