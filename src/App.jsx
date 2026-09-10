@@ -113,6 +113,13 @@ function visitsForTeacher(t) {
 }
 const seedVisits = (teachers) => teachers.flatMap(visitsForTeacher);
 
+const PLANEACION_TIPOS = ["Evaluación diagnóstica", "Plan Anual", "Planeación Primer Trimestre", "Planeación Segundo Trimestre", "Planeación Tercer Trimestre"];
+function planeacionesForTeacher(t) {
+  return PLANEACION_TIPOS.map((tipo, idx) => ({ id: `pl${t.id}_${idx}`, teacherId: t.id, tipo, status: "pendiente", fecha: "" }));
+}
+const seedPlaneaciones = (teachers) => teachers.flatMap(planeacionesForTeacher);
+const PLANEACIONES_DRIVE_URL = "https://drive.google.com/drive/folders/1PbrzkXSvc9WtXBfDGrLRyQXmASwfAT9q?usp=sharing";
+
 const GRADOS = ["1°", "2°", "3°"];
 const GRUPOS = ["A", "B", "C", "D", "E", "F"];
 
@@ -177,6 +184,7 @@ const KEYS = {
   evalPeriods: "coordinacion:evalPeriods",
   incidencias: "coordinacion:incidencias",
   cte: "coordinacion:cte",
+  planeaciones: "coordinacion:planeaciones",
 };
 
 async function loadKey(key, fallback) {
@@ -190,9 +198,9 @@ async function saveKey(key, value) {
 }
 
 const EVIDENCIAS_BUCKET = "evidencias";
-async function uploadEvidenciaFile(sessionId, file, tipo) {
+async function uploadEvidenciaFile(folder, file, tipo) {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `cte/${sessionId}/${uid("ev")}-${safeName}`;
+  const path = `${folder}/${uid("ev")}-${safeName}`;
   const body = tipo === "foto" ? await compressImageToBlob(file) : file;
   const { error } = await supabase.storage.from(EVIDENCIAS_BUCKET).upload(path, body, {
     contentType: tipo === "foto" ? "image/jpeg" : (file.type || "application/octet-stream"),
@@ -203,11 +211,11 @@ async function uploadEvidenciaFile(sessionId, file, tipo) {
 async function removeEvidenciaFile(path) {
   try { await supabase.storage.from(EVIDENCIAS_BUCKET).remove([path]); } catch { /* noop */ }
 }
-async function removeEvidenciaFolder(sessionId) {
+async function removeEvidenciaFolder(folder) {
   try {
-    const { data: files } = await supabase.storage.from(EVIDENCIAS_BUCKET).list(`cte/${sessionId}`);
+    const { data: files } = await supabase.storage.from(EVIDENCIAS_BUCKET).list(folder);
     if (files && files.length) {
-      await supabase.storage.from(EVIDENCIAS_BUCKET).remove(files.map((f) => `cte/${sessionId}/${f.name}`));
+      await supabase.storage.from(EVIDENCIAS_BUCKET).remove(files.map((f) => `${folder}/${f.name}`));
     }
   } catch { /* noop */ }
 }
@@ -238,6 +246,24 @@ function daysUntil(iso) {
   return Math.round((target - today) / 86400000);
 }
 function uid(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// Completa los campos del expediente que los registros antiguos no tenían, sin mutar lo guardado.
+function normalizeTeacher(t) {
+  return {
+    ...t,
+    fotoPath: t.fotoPath || "",
+    personal: { curp: "", fechaNacimiento: "", domicilio: "", contactoEmergenciaNombre: "", contactoEmergenciaTelefono: "", ...(t.personal || {}) },
+    laboral: { clavePresupuestal: "", categoria: "", nombramiento: "", horasFrenteGrupo: "", fechaIngreso: "", ...(t.laboral || {}) },
+    formacion: { titulo: "", cedulaProfesional: "", estudios: [], cursos: [], ...(t.formacion || {}) },
+    bitacora: t.bitacora || [],
+  };
+}
+// Migra en memoria las incidencias viejas (involucrados en texto libre) al nuevo formato con teacherIds.
+function normalizeIncidencia(i) {
+  if (i.teacherIds) return { notasInvolucrados: "", ...i };
+  return { ...i, teacherIds: [], notasInvolucrados: i.involucrados || "" };
+}
+const NOMBRAMIENTOS = ["Base", "Interinato", "Honorarios", "Contrato", "Otro"];
 
 function readFileAsDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -307,7 +333,7 @@ const Badge = ({ children, tone = "neutral" }) => {
   return <span style={{ background: c.bg, color: c.fg, fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 100, whiteSpace: "nowrap", lineHeight: 1.5 }}>{children}</span>;
 };
 
-const Btn = ({ children, onClick, kind = "filled", tone = "blue", size = "md", style, disabled, type = "button", ...rest }) => {
+const Btn = ({ children, onClick, kind = "filled", tone = "blue", size = "md", style, disabled, type = "button", href, ...rest }) => {
   const color = T[tone] || T.blue;
   const base = {
     filled: { background: disabled ? "#C7C7CC" : color, color: "#fff", border: "none" },
@@ -316,11 +342,20 @@ const Btn = ({ children, onClick, kind = "filled", tone = "blue", size = "md", s
     outline: { background: "#fff", color, border: `1px solid ${T.separator}` },
   };
   const sizes = { sm: { fontSize: 13, padding: "6px 12px" }, md: { fontSize: 15, padding: "10px 16px" } };
+  const commonStyle = {
+    ...base[kind], ...sizes[size], display: "inline-flex", alignItems: "center", gap: 6,
+    fontWeight: 600, borderRadius: kind === "text" ? 0 : 100, cursor: disabled ? "default" : "pointer", textDecoration: "none", ...style,
+  };
+  // Enlace externo real (abre en pestaña nueva sin reemplazar la app) en vez de window.open, que algunos navegadores navegan en la misma pestaña.
+  if (href && !disabled) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="cc-tap" style={commonStyle} {...rest}>
+        {children}
+      </a>
+    );
+  }
   return (
-    <button type={type} className="cc-tap" disabled={disabled} onClick={onClick} style={{
-      ...base[kind], ...sizes[size], display: "inline-flex", alignItems: "center", gap: 6,
-      fontWeight: 600, borderRadius: kind === "text" ? 0 : 100, cursor: disabled ? "default" : "pointer", ...style,
-    }} {...rest}>
+    <button type={type} className="cc-tap" disabled={disabled} onClick={onClick} style={commonStyle} {...rest}>
       {children}
     </button>
   );
@@ -387,13 +422,18 @@ const Sheet = ({ title, onClose, onSave, saveLabel = "Guardar", saveDisabled, ch
   </div>
 );
 
-const ScreenHeader = ({ title, subtitle, action }) => (
+const ScreenHeader = ({ title, subtitle, action, avatar }) => (
   <div style={{ marginBottom: 18 }}>
     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-      <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.4, margin: 0, color: T.ink }}>{title}</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+        {avatar}
+        <div>
+          <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.4, margin: 0, color: T.ink }}>{title}</h1>
+          {subtitle && <div style={{ color: T.inkSoft, fontSize: 14, marginTop: 3 }}>{subtitle}</div>}
+        </div>
+      </div>
       {action && <div className="no-print" style={{ flexShrink: 0, paddingTop: 4 }}>{action}</div>}
     </div>
-    {subtitle && <div style={{ color: T.inkSoft, fontSize: 14, marginTop: 3 }}>{subtitle}</div>}
   </div>
 );
 
@@ -563,26 +603,30 @@ function AppShell({ session }) {
   const [evalPeriods, setEvalPeriods] = useState([]);
   const [incidencias, setIncidencias] = useState([]);
   const [cte, setCte] = useState([]);
+  const [planeaciones, setPlaneaciones] = useState([]);
 
   useEffect(() => {
     (async () => {
       const defaultTeachers = seedTeachers();
-      const [tch, vis, obs, evp, inc, cteData] = await Promise.all([
+      const [tch, vis, obs, evp, inc, cteData, plan] = await Promise.all([
         loadKey(KEYS.teachers, defaultTeachers),
         loadKey(KEYS.visits, null),
         loadKey(KEYS.observations, []),
         loadKey(KEYS.evalPeriods, seedEvalPeriods()),
         loadKey(KEYS.incidencias, []),
         loadKey(KEYS.cte, null),
+        loadKey(KEYS.planeaciones, null),
       ]);
-      const finalTeachers = tch && tch.length ? tch : defaultTeachers;
+      const finalTeachers = (tch && tch.length ? tch : defaultTeachers).map(normalizeTeacher);
       const finalVisits = vis && vis.length ? vis : seedVisits(finalTeachers);
+      const finalPlaneaciones = plan && plan.length ? plan : seedPlaneaciones(finalTeachers);
       setTeachers(finalTeachers);
       setVisits(finalVisits);
       setObservations(obs || []);
       setEvalPeriods(evp && evp.length ? evp : seedEvalPeriods());
-      setIncidencias(inc || []);
+      setIncidencias((inc || []).map(normalizeIncidencia));
       setCte(cteData && cteData.length ? cteData : seedCte());
+      setPlaneaciones(finalPlaneaciones);
       setReady(true);
     })();
   }, []);
@@ -593,10 +637,15 @@ function AppShell({ session }) {
   const persistEvalPeriods = useCallback((next) => { setEvalPeriods(next); saveKey(KEYS.evalPeriods, next); }, []);
   const persistIncidencias = useCallback((next) => { setIncidencias(next); saveKey(KEYS.incidencias, next); }, []);
   const persistCte = useCallback((next) => { setCte(next); saveKey(KEYS.cte, next); }, []);
+  const persistPlaneaciones = useCallback((next) => { setPlaneaciones(next); saveKey(KEYS.planeaciones, next); }, []);
 
   const [obsPrefill, setObsPrefill] = useState(null);
   const goToObservation = useCallback((teacherId) => { setObsPrefill(teacherId); setActive("observacion"); }, []);
   const clearObsPrefill = useCallback(() => setObsPrefill(null), []);
+
+  const [obsViewPrefill, setObsViewPrefill] = useState(null);
+  const goToObservationRecord = useCallback((observationId) => { setObsViewPrefill(observationId); setActive("observacion"); }, []);
+  const clearObsViewPrefill = useCallback(() => setObsViewPrefill(null), []);
 
   const teacherName = (id) => teachers.find((t) => t.id === id)?.name || "—";
   const signOut = () => supabase.auth.signOut();
@@ -606,6 +655,7 @@ function AppShell({ session }) {
     { id: "visitas", label: "Visitas", icon: CalendarCheck },
     { id: "observacion", label: "Observación", icon: ClipboardCheck },
     { id: "evaluaciones", label: "Evaluaciones", icon: CalendarClock },
+    { id: "planeaciones", label: "Planeaciones", icon: FileText },
     { id: "docentes", label: "Docentes", icon: Users },
     { id: "incidencias", label: "Incidencias", icon: AlertTriangle },
     { id: "cte", label: "CTE", icon: BookOpenCheck },
@@ -620,10 +670,11 @@ function AppShell({ session }) {
     );
   }
 
-  const moduleProps = { teachers, visits, observations, evalPeriods, incidencias, cte, teacherName, isMobile,
+  const moduleProps = { teachers, visits, observations, evalPeriods, incidencias, cte, planeaciones, teacherName, isMobile, session,
     setVisits: persistVisits, setObservations: persistObservations, setEvalPeriods: persistEvalPeriods,
-    setTeachers: persistTeachers, setIncidencias: persistIncidencias, setCte: persistCte, setActive,
-    goToObservation, obsPrefill, clearObsPrefill };
+    setTeachers: persistTeachers, setIncidencias: persistIncidencias, setCte: persistCte, setPlaneaciones: persistPlaneaciones, setActive,
+    goToObservation, obsPrefill, clearObsPrefill,
+    goToObservationRecord, obsViewPrefill, clearObsViewPrefill };
 
   return (
     <div ref={rootRef} className="cc-root" style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.ink }}>
@@ -674,6 +725,7 @@ function AppShell({ session }) {
           {active === "visitas" && <VisitasModule {...moduleProps} />}
           {active === "observacion" && <ObservacionModule {...moduleProps} />}
           {active === "evaluaciones" && <EvaluacionesModule {...moduleProps} />}
+          {active === "planeaciones" && <PlaneacionesModule {...moduleProps} />}
           {active === "docentes" && <DocentesModule {...moduleProps} />}
           {active === "incidencias" && <IncidenciasModule {...moduleProps} />}
           {active === "cte" && <CteModule {...moduleProps} />}
@@ -889,8 +941,115 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation 
 const thStyle = { textAlign: "left", padding: "10px 14px", fontSize: 11.5, fontWeight: 700, color: T.inkSoft };
 const tdStyle = { padding: "10px 14px", color: T.ink, verticalAlign: "middle" };
 
+/* ============================== PLANEACIONES MODULE ============================== */
+function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile }) {
+  const [filter, setFilter] = useState("");
+  const [editing, setEditing] = useState(null);
+
+  const findOrDefault = (teacherId, tipo, idx) =>
+    planeaciones.find((p) => p.teacherId === teacherId && p.tipo === tipo) || { id: `pl${teacherId}_${idx}`, teacherId, tipo, status: "pendiente", fecha: "" };
+
+  const grouped = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return teachers.filter((t) => !q || t.name.toLowerCase().includes(q) || t.disciplina.toLowerCase().includes(q))
+      .map((t) => ({ teacher: t, items: PLANEACION_TIPOS.map((tipo, idx) => findOrDefault(t.id, tipo, idx)) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teachers, planeaciones, filter]);
+
+  const totalDone = planeaciones.filter((p) => p.status === "entregada").length;
+  const totalAll = teachers.length * PLANEACION_TIPOS.length;
+
+  const save = () => {
+    const exists = planeaciones.some((p) => p.id === editing.id);
+    setPlaneaciones(exists ? planeaciones.map((p) => (p.id === editing.id ? editing : p)) : [...planeaciones, editing]);
+    setEditing(null);
+  };
+
+  return (
+    <div>
+      <ScreenHeader title="Planeaciones" subtitle={`${totalDone} de ${totalAll} entregables completados`}
+        action={<div style={{ display: "flex", gap: 8 }}>
+          <Btn kind="tinted" size="sm" href={PLANEACIONES_DRIVE_URL}><FileText size={13} /> Abrir carpeta de Drive</Btn>
+          <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
+        </div>} />
+      <div className="no-print" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 8, background: T.card, borderRadius: 10, padding: "9px 12px" }}>
+        <Search size={15} color={T.inkFaint} />
+        <input style={{ border: "none", outline: "none", fontSize: 15, background: "transparent", width: "100%" }} placeholder="Buscar docente o disciplina" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      </div>
+      <div className="no-print" style={{ fontSize: 12, color: T.inkFaint, marginBottom: 12 }}>
+        Toca un entregable para marcar la entrega y la fecha. Los archivos viven en la carpeta de Drive de arriba.
+      </div>
+
+      {isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {grouped.map(({ teacher, items }) => (
+            <Card key={teacher.id} style={{ padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 14.5 }}>{teacher.name}</div>
+              <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 10 }}>{teacher.disciplina}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {items.map((p) => (
+                  <button key={p.tipo} onClick={() => setEditing(p)} className="cc-tap" style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center", border: "none", cursor: "pointer",
+                    borderRadius: 10, padding: "8px 10px", background: p.status === "entregada" ? T.greenTint : T.fill, textAlign: "left",
+                  }}>
+                    <span style={{ fontSize: 12.5, color: T.ink }}>{p.tipo}</span>
+                    <Badge tone={p.status === "entregada" ? "green" : "neutral"}>{p.status === "entregada" ? fmtDateShort(p.fecha) : "Pendiente"}</Badge>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card className="cc-scrollx">
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 900 }}>
+            <thead>
+              <tr style={{ background: T.fill }}>
+                <th style={thStyle}>Docente</th>
+                {PLANEACION_TIPOS.map((tipo) => <th key={tipo} style={{ ...thStyle, textAlign: "center" }}>{tipo}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map(({ teacher, items }) => (
+                <tr key={teacher.id} style={{ borderTop: `0.5px solid ${T.separator}` }}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{teacher.name}</td>
+                  {items.map((p) => (
+                    <td key={p.tipo} style={{ ...tdStyle, textAlign: "center" }}>
+                      <button onClick={() => setEditing(p)} className="cc-tap" style={{
+                        border: "none", cursor: "pointer", borderRadius: 100, padding: "5px 10px",
+                        background: p.status === "entregada" ? T.greenTint : T.fill, color: p.status === "entregada" ? "#248A3D" : T.inkSoft,
+                        display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 700,
+                      }}>
+                        {p.status === "entregada" ? <Check size={12} /> : <Clock size={12} />}
+                        {p.status === "entregada" ? fmtDateShort(p.fecha) : "Pendiente"}
+                      </button>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {editing && (
+        <Sheet title={editing.tipo} onClose={() => setEditing(null)} onSave={save} isMobile={isMobile}>
+          <div style={{ fontSize: 13, color: T.inkSoft, marginTop: -8 }}>{teachers.find((t) => t.id === editing.teacherId)?.name}</div>
+          <Field label="Estatus">
+            <SegmentedControl value={editing.status}
+              onChange={(v) => setEditing({ ...editing, status: v, fecha: v === "entregada" ? (editing.fecha || todayIso()) : editing.fecha })}
+              options={[{ value: "pendiente", label: "Pendiente" }, { value: "entregada", label: "Entregada" }]} />
+          </Field>
+          <Field label="Fecha de entrega"><input type="date" style={inputStyle} value={editing.fecha} onChange={(e) => setEditing({ ...editing, fecha: e.target.value })} /></Field>
+          <Btn kind="tinted" size="sm" href={PLANEACIONES_DRIVE_URL}><FileText size={13} /> Abrir carpeta de Drive</Btn>
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
 /* ============================== OBSERVACIÓN MODULE ============================== */
-function ObservacionModule({ teachers, observations, setObservations, teacherName, isMobile, obsPrefill, clearObsPrefill }) {
+function ObservacionModule({ teachers, observations, setObservations, teacherName, isMobile, obsPrefill, clearObsPrefill, obsViewPrefill, clearObsViewPrefill }) {
   const [mode, setMode] = useState("list");
   const [editingId, setEditingId] = useState(null);
   const blank = () => ({
@@ -908,6 +1067,15 @@ function ObservacionModule({ teachers, observations, setObservations, teacherNam
     if (obsPrefill) { startNew(obsPrefill); clearObsPrefill(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obsPrefill]);
+
+  useEffect(() => {
+    if (obsViewPrefill) {
+      const found = observations.find((o) => o.id === obsViewPrefill);
+      if (found) view(found);
+      clearObsViewPrefill();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obsViewPrefill]);
 
   const save = () => {
     if (!draft.teacherId || !draft.fecha) return;
@@ -1123,9 +1291,11 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
 }
 
 /* ============================== DOCENTES MODULE ============================== */
-function DocentesModule({ teachers, setTeachers, visits, setVisits, observations, setObservations, isMobile }) {
+function DocentesModule(props) {
+  const { teachers, setTeachers, visits, setVisits, observations, setObservations, incidencias, setIncidencias, planeaciones, setPlaneaciones, isMobile } = props;
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState(null);
+  const [openId, setOpenId] = useState(null);
 
   const stats = (id) => {
     const tv = visits.filter((v) => v.teacherId === id);
@@ -1139,22 +1309,28 @@ function DocentesModule({ teachers, setTeachers, visits, setVisits, observations
   const filtered = teachers.filter((t) => !filter || t.name.toLowerCase().includes(filter.toLowerCase()) || t.disciplina.toLowerCase().includes(filter.toLowerCase()));
   const save = () => {
     if (!editing.name) return;
-    const isNew = !teachers.some((x) => x.id === editing.id);
-    if (isNew) {
-      setTeachers([...teachers, editing]);
-      setVisits([...visits, ...visitsForTeacher(editing)]);
-    } else {
-      setTeachers(teachers.map((x) => (x.id === editing.id ? editing : x)));
-    }
+    const newTeacher = normalizeTeacher(editing);
+    setTeachers([...teachers, newTeacher]);
+    setVisits([...visits, ...visitsForTeacher(newTeacher)]);
+    setPlaneaciones([...planeaciones, ...planeacionesForTeacher(newTeacher)]);
     setEditing(null);
+    setOpenId(newTeacher.id);
   };
-  const remove = (id) => {
+  const remove = async (id) => {
     const t = teachers.find((x) => x.id === id);
-    if (!confirm(`¿Eliminar a ${t?.name || "este docente"}? También se borrarán sus visitas y observaciones registradas.`)) return;
+    if (!confirm(`¿Eliminar a ${t?.name || "este docente"}? También se borrarán sus visitas, observaciones, planeaciones y su expediente registrado.`)) return;
+    await removeEvidenciaFolder(`docentes/${id}`);
     setTeachers(teachers.filter((x) => x.id !== id));
     setVisits(visits.filter((v) => v.teacherId !== id));
     setObservations(observations.filter((o) => o.teacherId !== id));
+    setPlaneaciones(planeaciones.filter((p) => p.teacherId !== id));
+    setIncidencias(incidencias.map((i) => normalizeIncidencia(i)).map((i) => ({ ...i, teacherIds: i.teacherIds.filter((x) => x !== id) })));
   };
+
+  const openTeacher = teachers.find((t) => t.id === openId);
+  if (openTeacher) {
+    return <TeacherExpediente {...props} teacher={openTeacher} onBack={() => setOpenId(null)} />;
+  }
 
   return (
     <div>
@@ -1166,14 +1342,13 @@ function DocentesModule({ teachers, setTeachers, visits, setVisits, observations
       </div>
 
       {editing && (
-        <Sheet title={teachers.some((x) => x.id === editing.id) ? "Editar docente" : "Nuevo docente"} onClose={() => setEditing(null)} onSave={save} saveDisabled={!editing.name} isMobile={isMobile}>
+        <Sheet title="Nuevo docente" onClose={() => setEditing(null)} onSave={save} saveLabel="Crear y abrir expediente" saveDisabled={!editing.name} isMobile={isMobile}>
           <Field label="Nombre completo"><input style={inputStyle} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
           <Field label="Disciplina(s)"><input style={inputStyle} value={editing.disciplina} onChange={(e) => setEditing({ ...editing, disciplina: e.target.value })} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <Field label="Teléfono"><input style={inputStyle} value={editing.telefono} onChange={(e) => setEditing({ ...editing, telefono: e.target.value })} /></Field>
             <Field label="Correo"><input style={inputStyle} value={editing.correo} onChange={(e) => setEditing({ ...editing, correo: e.target.value })} /></Field>
           </div>
-          <Field label="Notas"><textarea style={{ ...inputStyle, minHeight: 70 }} value={editing.notas} onChange={(e) => setEditing({ ...editing, notas: e.target.value })} /></Field>
         </Sheet>
       )}
 
@@ -1181,15 +1356,15 @@ function DocentesModule({ teachers, setTeachers, visits, setVisits, observations
         {filtered.map((t) => {
           const s = stats(t.id);
           return (
-            <Card key={t.id} style={{ padding: 15 }}>
+            <Card key={t.id} onClick={() => setOpenId(t.id)} className="cc-row-tap" style={{ padding: 15, cursor: "pointer" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14.5 }}>{t.name}</div>
                   <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 2 }}>{t.disciplina}</div>
                 </div>
                 <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                  <IconBtn icon={Pencil} size={28} onClick={() => setEditing(t)} />
-                  <IconBtn icon={Trash2} size={28} tone="red" onClick={() => remove(t.id)} />
+                  <IconBtn icon={Trash2} size={28} tone="red" onClick={(e) => { e.stopPropagation(); remove(t.id); }} />
+                  <ChevronRight size={17} color={T.inkFaint} />
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
@@ -1206,11 +1381,370 @@ function DocentesModule({ teachers, setTeachers, visits, setVisits, observations
   );
 }
 
+/* ============================== EXPEDIENTE DOCENTE ============================== */
+const NIVELES_ESTUDIO = ["Normal", "Licenciatura", "Especialidad", "Maestría", "Doctorado", "Técnico", "Otro"];
+
+function TeacherAvatar({ path, uploading, onPick, onRemove }) {
+  const [src, setSrc] = useState(null);
+  const inputRef = useRef(null);
+  useEffect(() => {
+    let active = true;
+    if (!path) { setSrc(null); return; }
+    getSignedEvidenciaUrl(path).then((url) => { if (active) setSrc(url); });
+    return () => { active = false; };
+  }, [path]);
+  return (
+    <div style={{ position: "relative", width: 72, height: 72, borderRadius: "50%", overflow: "hidden", background: T.fill, flexShrink: 0, border: `1px solid ${T.separator}` }}>
+      {src ? <img src={src} alt="Foto del docente" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (
+        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.inkFaint }}>
+          <Users size={28} strokeWidth={1.5} />
+        </div>
+      )}
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.target.value = ""; }} />
+      <button className="no-print cc-tap" type="button" disabled={uploading} onClick={() => inputRef.current?.click()} title="Cambiar foto" style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.55)", border: "none", color: "#fff", fontSize: 9.5, fontWeight: 600, padding: "3px 0", cursor: "pointer" }}>
+        {uploading ? "…" : "Cambiar"}
+      </button>
+      {path && !uploading && (
+        <button className="no-print" type="button" onClick={onRemove} title="Quitar foto" style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <X size={10} color="#fff" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TeacherExpediente({ teacher, teachers, visits, observations, incidencias, planeaciones, session, isMobile, onBack, setActive, goToObservationRecord, setTeachers }) {
+  const updateTeacher = (patch) => setTeachers(teachers.map((t) => (t.id === teacher.id ? { ...t, ...patch } : t)));
+
+  const [editingBasics, setEditingBasics] = useState(null);
+  const [estudioDraft, setEstudioDraft] = useState(null);
+  const [cursoDraft, setCursoDraft] = useState(null);
+  const [bitacoraDraft, setBitacoraDraft] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  const tVisits = visits.filter((v) => v.teacherId === teacher.id);
+  const tObs = observations.filter((o) => o.teacherId === teacher.id);
+  const tInc = incidencias.map(normalizeIncidencia).filter((i) => i.teacherIds.includes(teacher.id));
+  const tPlan = PLANEACION_TIPOS.map((tipo, idx) => planeaciones.find((p) => p.teacherId === teacher.id && p.tipo === tipo) || { id: `pl${teacher.id}_${idx}`, teacherId: teacher.id, tipo, status: "pendiente", fecha: "", link: "" });
+  const planDone = tPlan.filter((p) => p.status === "entregada").length;
+  const visitsDone = tVisits.filter((v) => v.status === "realizada").length;
+  const scoreVals = tObs.flatMap((o) => Object.values(o.scores || {})).filter(Boolean);
+  const avg = scoreVals.length ? (scoreVals.reduce((a, b) => a + b, 0) / scoreVals.length).toFixed(2) : null;
+  const incAbiertas = tInc.filter((i) => i.status !== "cerrada").length;
+
+  const openEditBasics = () => setEditingBasics({
+    name: teacher.name, disciplina: teacher.disciplina, telefono: teacher.telefono, correo: teacher.correo,
+    personal: { ...teacher.personal }, laboral: { ...teacher.laboral },
+    titulo: teacher.formacion.titulo, cedulaProfesional: teacher.formacion.cedulaProfesional,
+  });
+  const saveBasics = () => {
+    updateTeacher({
+      name: editingBasics.name, disciplina: editingBasics.disciplina, telefono: editingBasics.telefono, correo: editingBasics.correo,
+      personal: editingBasics.personal, laboral: editingBasics.laboral,
+      formacion: { ...teacher.formacion, titulo: editingBasics.titulo, cedulaProfesional: editingBasics.cedulaProfesional },
+    });
+    setEditingBasics(null);
+  };
+
+  const saveEstudio = () => {
+    if (!estudioDraft.nivel && !estudioDraft.tituloGrado) return;
+    const list = teacher.formacion.estudios;
+    const exists = list.some((e) => e.id === estudioDraft.id);
+    const next = exists ? list.map((e) => (e.id === estudioDraft.id ? estudioDraft : e)) : [...list, estudioDraft];
+    updateTeacher({ formacion: { ...teacher.formacion, estudios: next } });
+    setEstudioDraft(null);
+  };
+  const removeEstudio = (id) => updateTeacher({ formacion: { ...teacher.formacion, estudios: teacher.formacion.estudios.filter((e) => e.id !== id) } });
+
+  const saveCurso = () => {
+    if (!cursoDraft.nombre) return;
+    const list = teacher.formacion.cursos;
+    const exists = list.some((c) => c.id === cursoDraft.id);
+    const next = exists ? list.map((c) => (c.id === cursoDraft.id ? cursoDraft : c)) : [...list, cursoDraft];
+    updateTeacher({ formacion: { ...teacher.formacion, cursos: next } });
+    setCursoDraft(null);
+  };
+  const removeCurso = (id) => updateTeacher({ formacion: { ...teacher.formacion, cursos: teacher.formacion.cursos.filter((c) => c.id !== id) } });
+
+  const saveBitacora = () => {
+    if (!bitacoraDraft.texto) return;
+    const exists = teacher.bitacora.some((b) => b.id === bitacoraDraft.id);
+    const next = exists ? teacher.bitacora.map((b) => (b.id === bitacoraDraft.id ? bitacoraDraft : b)) : [{ ...bitacoraDraft, id: uid("b") }, ...teacher.bitacora];
+    updateTeacher({ bitacora: next });
+    setBitacoraDraft(null);
+  };
+  const removeBitacora = (id) => updateTeacher({ bitacora: teacher.bitacora.filter((b) => b.id !== id) });
+  const migrateNota = () => {
+    updateTeacher({ bitacora: [{ id: uid("b"), fecha: todayIso(), autor: session.user.email, texto: teacher.notas }, ...teacher.bitacora], notas: "" });
+  };
+
+  const handlePhotoPick = async (file) => {
+    setPhotoUploading(true);
+    try {
+      const oldPath = teacher.fotoPath;
+      const { path } = await uploadEvidenciaFile(`docentes/${teacher.id}`, file, "foto");
+      updateTeacher({ fotoPath: path });
+      if (oldPath) await removeEvidenciaFile(oldPath);
+    } catch (err) {
+      alert(`No se pudo subir la foto: ${err.message || "error desconocido"}`);
+    }
+    setPhotoUploading(false);
+  };
+  const removePhoto = async () => {
+    if (teacher.fotoPath) await removeEvidenciaFile(teacher.fotoPath);
+    updateTeacher({ fotoPath: "" });
+  };
+
+  return (
+    <div>
+      <ScreenHeader title={teacher.name} subtitle={teacher.disciplina}
+        avatar={<TeacherAvatar path={teacher.fotoPath} uploading={photoUploading} onPick={handlePhotoPick} onRemove={removePhoto} />}
+        action={<div style={{ display: "flex", gap: 8 }}>
+          <IconBtn icon={ChevronLeft} onClick={onBack} />
+          <IconBtn icon={Pencil} onClick={openEditBasics} />
+          <IconBtn icon={Printer} onClick={() => window.print()} />
+        </div>} />
+
+      {editingBasics && (
+        <Sheet title="Editar datos del docente" onClose={() => setEditingBasics(null)} onSave={saveBasics} saveDisabled={!editingBasics.name} isMobile={isMobile}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: T.blue }}>Datos generales</div>
+          <Field label="Nombre completo"><input style={inputStyle} value={editingBasics.name} onChange={(e) => setEditingBasics({ ...editingBasics, name: e.target.value })} /></Field>
+          <Field label="Disciplina(s)"><input style={inputStyle} value={editingBasics.disciplina} onChange={(e) => setEditingBasics({ ...editingBasics, disciplina: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Teléfono"><input style={inputStyle} value={editingBasics.telefono} onChange={(e) => setEditingBasics({ ...editingBasics, telefono: e.target.value })} /></Field>
+            <Field label="Correo"><input style={inputStyle} value={editingBasics.correo} onChange={(e) => setEditingBasics({ ...editingBasics, correo: e.target.value })} /></Field>
+          </div>
+
+          <div style={{ fontWeight: 700, fontSize: 13, color: T.blue, marginTop: 4 }}>Datos personales</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="CURP"><input style={inputStyle} value={editingBasics.personal.curp} onChange={(e) => setEditingBasics({ ...editingBasics, personal: { ...editingBasics.personal, curp: e.target.value } })} /></Field>
+            <Field label="Fecha de nacimiento"><input type="date" style={inputStyle} value={editingBasics.personal.fechaNacimiento} onChange={(e) => setEditingBasics({ ...editingBasics, personal: { ...editingBasics.personal, fechaNacimiento: e.target.value } })} /></Field>
+          </div>
+          <Field label="Domicilio"><input style={inputStyle} value={editingBasics.personal.domicilio} onChange={(e) => setEditingBasics({ ...editingBasics, personal: { ...editingBasics.personal, domicilio: e.target.value } })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Contacto de emergencia"><input style={inputStyle} value={editingBasics.personal.contactoEmergenciaNombre} onChange={(e) => setEditingBasics({ ...editingBasics, personal: { ...editingBasics.personal, contactoEmergenciaNombre: e.target.value } })} /></Field>
+            <Field label="Teléfono de emergencia"><input style={inputStyle} value={editingBasics.personal.contactoEmergenciaTelefono} onChange={(e) => setEditingBasics({ ...editingBasics, personal: { ...editingBasics.personal, contactoEmergenciaTelefono: e.target.value } })} /></Field>
+          </div>
+
+          <div style={{ fontWeight: 700, fontSize: 13, color: T.blue, marginTop: 4 }}>Datos laborales</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Clave presupuestal"><input style={inputStyle} value={editingBasics.laboral.clavePresupuestal} onChange={(e) => setEditingBasics({ ...editingBasics, laboral: { ...editingBasics.laboral, clavePresupuestal: e.target.value } })} /></Field>
+            <Field label="Categoría"><input style={inputStyle} value={editingBasics.laboral.categoria} onChange={(e) => setEditingBasics({ ...editingBasics, laboral: { ...editingBasics.laboral, categoria: e.target.value } })} /></Field>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Nombramiento">
+              <select style={inputStyle} value={editingBasics.laboral.nombramiento} onChange={(e) => setEditingBasics({ ...editingBasics, laboral: { ...editingBasics.laboral, nombramiento: e.target.value } })}>
+                <option value="">Elegir</option>
+                {NOMBRAMIENTOS.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </Field>
+            <Field label="Horas frente a grupo"><input type="number" style={inputStyle} value={editingBasics.laboral.horasFrenteGrupo} onChange={(e) => setEditingBasics({ ...editingBasics, laboral: { ...editingBasics.laboral, horasFrenteGrupo: e.target.value } })} /></Field>
+          </div>
+          <Field label="Fecha de ingreso"><input type="date" style={inputStyle} value={editingBasics.laboral.fechaIngreso} onChange={(e) => setEditingBasics({ ...editingBasics, laboral: { ...editingBasics.laboral, fechaIngreso: e.target.value } })} /></Field>
+
+          <div style={{ fontWeight: 700, fontSize: 13, color: T.blue, marginTop: 4 }}>Formación académica</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Título profesional"><input style={inputStyle} value={editingBasics.titulo} onChange={(e) => setEditingBasics({ ...editingBasics, titulo: e.target.value })} /></Field>
+            <Field label="Cédula profesional"><input style={inputStyle} value={editingBasics.cedulaProfesional} onChange={(e) => setEditingBasics({ ...editingBasics, cedulaProfesional: e.target.value })} /></Field>
+          </div>
+        </Sheet>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{visitsDone}/{tVisits.length}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Visitas realizadas</div></Card>
+        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{tObs.length}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Observaciones</div></Card>
+        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{avg ?? "—"}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Promedio</div></Card>
+        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800, color: incAbiertas ? T.red : T.ink }}>{incAbiertas}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Incidencias abiertas</div></Card>
+      </div>
+
+      {teacher.notas && (
+        <Card style={{ padding: 16, marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 13 }}><strong>Nota anterior:</strong> {teacher.notas}</div>
+          <Btn kind="tinted" size="sm" onClick={migrateNota} style={{ flexShrink: 0 }}>Convertir en bitácora</Btn>
+        </Card>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+        {/* Formación académica */}
+        <Card style={{ padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5 }}>Estudios</div>
+            <button className="no-print" onClick={() => setEstudioDraft({ id: uid("es"), nivel: "", institucion: "", tituloGrado: "", anio: "" })} style={{ background: "none", border: "none", color: T.blue, cursor: "pointer", display: "flex", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 700 }}><Plus size={14} /> Agregar</button>
+          </div>
+          {teacher.formacion.estudios.length === 0 ? <div style={{ fontSize: 12.5, color: T.inkFaint }}>Sin estudios registrados.</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {teacher.formacion.estudios.map((e) => (
+                <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, background: T.fill, borderRadius: 10, padding: "8px 10px" }}>
+                  <div style={{ minWidth: 0, fontSize: 12.5 }}>
+                    <div style={{ fontWeight: 700 }}>{e.nivel}{e.anio ? ` · ${e.anio}` : ""}</div>
+                    <div style={{ color: T.inkSoft }}>{e.tituloGrado}{e.institucion ? ` — ${e.institucion}` : ""}</div>
+                  </div>
+                  <div className="no-print" style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                    <IconBtn icon={Pencil} size={24} onClick={() => setEstudioDraft(e)} />
+                    <IconBtn icon={Trash2} size={24} tone="red" onClick={() => removeEstudio(e.id)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card style={{ padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5 }}>Cursos y certificaciones</div>
+            <button className="no-print" onClick={() => setCursoDraft({ id: uid("cu"), nombre: "", institucion: "", fecha: "", horas: "" })} style={{ background: "none", border: "none", color: T.blue, cursor: "pointer", display: "flex", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 700 }}><Plus size={14} /> Agregar</button>
+          </div>
+          {teacher.formacion.cursos.length === 0 ? <div style={{ fontSize: 12.5, color: T.inkFaint }}>Sin cursos registrados.</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {teacher.formacion.cursos.map((c) => (
+                <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, background: T.fill, borderRadius: 10, padding: "8px 10px" }}>
+                  <div style={{ minWidth: 0, fontSize: 12.5 }}>
+                    <div style={{ fontWeight: 700 }}>{c.nombre}{c.horas ? ` · ${c.horas} hrs` : ""}</div>
+                    <div style={{ color: T.inkSoft }}>{c.institucion}{c.fecha ? ` — ${fmtDateShort(c.fecha)}` : ""}</div>
+                  </div>
+                  <div className="no-print" style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                    <IconBtn icon={Pencil} size={24} onClick={() => setCursoDraft(c)} />
+                    <IconBtn icon={Trash2} size={24} tone="red" onClick={() => removeCurso(c.id)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {estudioDraft && (
+        <Sheet title="Estudio" onClose={() => setEstudioDraft(null)} onSave={saveEstudio} isMobile={isMobile}>
+          <Field label="Nivel">
+            <select style={inputStyle} value={estudioDraft.nivel} onChange={(e) => setEstudioDraft({ ...estudioDraft, nivel: e.target.value })}>
+              <option value="">Elegir</option>
+              {NIVELES_ESTUDIO.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </Field>
+          <Field label="Título / grado obtenido"><input style={inputStyle} value={estudioDraft.tituloGrado} onChange={(e) => setEstudioDraft({ ...estudioDraft, tituloGrado: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Institución"><input style={inputStyle} value={estudioDraft.institucion} onChange={(e) => setEstudioDraft({ ...estudioDraft, institucion: e.target.value })} /></Field>
+            <Field label="Año"><input style={inputStyle} value={estudioDraft.anio} onChange={(e) => setEstudioDraft({ ...estudioDraft, anio: e.target.value })} /></Field>
+          </div>
+        </Sheet>
+      )}
+      {cursoDraft && (
+        <Sheet title="Curso / certificación" onClose={() => setCursoDraft(null)} onSave={saveCurso} isMobile={isMobile}>
+          <Field label="Nombre del curso"><input style={inputStyle} value={cursoDraft.nombre} onChange={(e) => setCursoDraft({ ...cursoDraft, nombre: e.target.value })} /></Field>
+          <Field label="Institución"><input style={inputStyle} value={cursoDraft.institucion} onChange={(e) => setCursoDraft({ ...cursoDraft, institucion: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Fecha"><input type="date" style={inputStyle} value={cursoDraft.fecha} onChange={(e) => setCursoDraft({ ...cursoDraft, fecha: e.target.value })} /></Field>
+            <Field label="Horas"><input type="number" style={inputStyle} value={cursoDraft.horas} onChange={(e) => setCursoDraft({ ...cursoDraft, horas: e.target.value })} /></Field>
+          </div>
+        </Sheet>
+      )}
+
+      {/* Bitácora */}
+      <Card style={{ padding: 16, marginTop: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14.5 }}>Bitácora de seguimiento</div>
+          <button className="no-print" onClick={() => setBitacoraDraft({ id: uid("b"), fecha: todayIso(), autor: session.user.email, texto: "" })} style={{ background: "none", border: "none", color: T.blue, cursor: "pointer", display: "flex", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 700 }}><Plus size={14} /> Nueva entrada</button>
+        </div>
+        {teacher.bitacora.length === 0 ? <div style={{ fontSize: 12.5, color: T.inkFaint }}>Sin entradas todavía.</div> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {teacher.bitacora.map((b) => (
+              <div key={b.id} style={{ borderLeft: `2px solid ${T.blueTint}`, paddingLeft: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>{fmtDate(b.fecha)} · {b.autor}</div>
+                  <div className="no-print" style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                    <IconBtn icon={Pencil} size={22} onClick={() => setBitacoraDraft(b)} />
+                    <IconBtn icon={Trash2} size={22} tone="red" onClick={() => removeBitacora(b.id)} />
+                  </div>
+                </div>
+                <div style={{ fontSize: 13.5, marginTop: 2 }}>{b.texto}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+      {bitacoraDraft && (
+        <Sheet title="Entrada de bitácora" onClose={() => setBitacoraDraft(null)} onSave={saveBitacora} isMobile={isMobile}>
+          <Field label="Fecha"><input type="date" style={inputStyle} value={bitacoraDraft.fecha} onChange={(e) => setBitacoraDraft({ ...bitacoraDraft, fecha: e.target.value })} /></Field>
+          <Field label="Nota"><textarea style={{ ...inputStyle, minHeight: 90 }} value={bitacoraDraft.texto} onChange={(e) => setBitacoraDraft({ ...bitacoraDraft, texto: e.target.value })} /></Field>
+        </Sheet>
+      )}
+
+      {/* Historial */}
+      <div style={{ fontWeight: 800, fontSize: 17, marginTop: 22, marginBottom: 10 }}>Historial</div>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: 12 }}>
+        <Card style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><CalendarCheck size={14} color={T.inkSoft} /> Visitas</div>
+          {tVisits.length === 0 ? <div style={{ fontSize: 12, color: T.inkFaint }}>Sin visitas programadas.</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {tVisits.map((v) => (
+                <div key={v.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+                  <span>{v.month} · {v.semana}</span>
+                  <Badge tone={v.status === "realizada" ? "green" : "neutral"}>{v.status === "realizada" ? "Realizada" : "Pendiente"}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><FileText size={14} color={T.inkSoft} /> Planeaciones ({planDone}/{tPlan.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {tPlan.map((p) => (
+              <div key={p.tipo} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, gap: 6 }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.tipo}</span>
+                <Badge tone={p.status === "entregada" ? "green" : "neutral"}>{p.status === "entregada" ? "Entregada" : "Pendiente"}</Badge>
+              </div>
+            ))}
+            <button className="no-print" onClick={() => setActive("planeaciones")} style={{ background: "none", border: "none", color: T.blue, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: "4px 0", textAlign: "left" }}>Ver en Planeaciones →</button>
+          </div>
+        </Card>
+        <Card style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><ClipboardCheck size={14} color={T.inkSoft} /> Observaciones</div>
+          {tObs.length === 0 ? <div style={{ fontSize: 12, color: T.inkFaint }}>Sin observaciones registradas.</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {tObs.map((o) => {
+                const vals = Object.values(o.scores || {}).filter(Boolean);
+                const oAvg = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : "—";
+                return (
+                  <button key={o.id} className="no-print cc-tap" onClick={() => goToObservationRecord(o.id)} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, background: "none", border: "none", cursor: "pointer", padding: "3px 0", color: T.ink, textAlign: "left" }}>
+                    <span>{fmtDateShort(o.fecha)} · {o.asignatura || "sin asignatura"}</span>
+                    <Badge tone="orange">{oAvg}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+        <Card style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><AlertTriangle size={14} color={T.inkSoft} /> Incidencias</div>
+          {tInc.length === 0 ? <div style={{ fontSize: 12, color: T.inkFaint }}>Sin incidencias registradas.</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {tInc.map((i) => (
+                <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtDateShort(i.fecha)} · {i.tipo}</span>
+                  <Badge tone={i.status === "cerrada" ? "green" : "red"}>{i.status === "cerrada" ? "Cerrada" : "Abierta"}</Badge>
+                </div>
+              ))}
+              <button className="no-print" onClick={() => setActive("incidencias")} style={{ background: "none", border: "none", color: T.blue, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: "4px 0", textAlign: "left" }}>Ver en Incidencias →</button>
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 /* ============================== INCIDENCIAS MODULE ============================== */
-function IncidenciasModule({ incidencias, setIncidencias, isMobile }) {
+const ChipToggle = ({ label, active, onClick }) => (
+  <button type="button" onClick={onClick} className="cc-tap" style={{
+    border: "none", cursor: "pointer", borderRadius: 100, padding: "6px 12px", fontSize: 12.5, fontWeight: 600,
+    background: active ? T.blue : T.fill, color: active ? "#fff" : T.inkSoft,
+  }}>{label}</button>
+);
+
+function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, teacherName, setActive }) {
   const [showForm, setShowForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState("todas");
-  const blank = { id: null, fecha: "", involucrados: "", tipo: "Académica", descripcion: "", accion: "", status: "abierta" };
+  const blank = { id: null, fecha: "", teacherIds: [], notasInvolucrados: "", tipo: "Académica", descripcion: "", accion: "", status: "abierta" };
   const [draft, setDraft] = useState(blank);
 
   const save = () => {
@@ -1219,9 +1753,10 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile }) {
     else setIncidencias([{ ...draft, id: uid("i") }, ...incidencias]);
     setDraft(blank); setShowForm(false);
   };
-  const edit = (i) => { setDraft(i); setShowForm(true); };
+  const edit = (i) => { setDraft(normalizeIncidencia(i)); setShowForm(true); };
   const remove = (id) => setIncidencias(incidencias.filter((i) => i.id !== id));
   const toggleStatus = (i) => setIncidencias(incidencias.map((x) => x.id === i.id ? { ...x, status: x.status === "cerrada" ? "abierta" : "cerrada" } : x));
+  const toggleDraftTeacher = (id) => setDraft((d) => ({ ...d, teacherIds: d.teacherIds.includes(id) ? d.teacherIds.filter((x) => x !== id) : [...d.teacherIds, id] }));
 
   const filtered = incidencias.filter((i) => filterStatus === "todas" || i.status === filterStatus);
   const tipos = ["Académica", "Disciplina", "Administrativa", "Otra"];
@@ -1237,15 +1772,22 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile }) {
 
       {showForm && (
         <Sheet title={draft.id ? "Editar incidencia" : "Nueva incidencia"} onClose={() => setShowForm(false)} onSave={save} saveDisabled={!draft.fecha || !draft.descripcion} isMobile={isMobile}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(2, 1fr)", gap: 10 }}>
             <Field label="Fecha"><input type="date" style={inputStyle} value={draft.fecha} onChange={(e) => setDraft({ ...draft, fecha: e.target.value })} /></Field>
-            <Field label="Involucrado(s)"><input style={inputStyle} value={draft.involucrados} onChange={(e) => setDraft({ ...draft, involucrados: e.target.value })} /></Field>
             <Field label="Tipo">
               <select style={inputStyle} value={draft.tipo} onChange={(e) => setDraft({ ...draft, tipo: e.target.value })}>
                 {tipos.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
           </div>
+          <Field label="Docente(s) involucrado(s)">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {teachers.map((t) => (
+                <ChipToggle key={t.id} label={t.name} active={draft.teacherIds.includes(t.id)} onClick={() => toggleDraftTeacher(t.id)} />
+              ))}
+            </div>
+          </Field>
+          <Field label="Otras personas involucradas (opcional)"><input style={inputStyle} placeholder="Alumnos, padres de familia, etc." value={draft.notasInvolucrados} onChange={(e) => setDraft({ ...draft, notasInvolucrados: e.target.value })} /></Field>
           <Field label="Descripción"><textarea style={{ ...inputStyle, minHeight: 70 }} value={draft.descripcion} onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })} /></Field>
           <Field label="Acción tomada"><textarea style={{ ...inputStyle, minHeight: 70 }} value={draft.accion} onChange={(e) => setDraft({ ...draft, accion: e.target.value })} /></Field>
         </Sheet>
@@ -1255,25 +1797,33 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile }) {
         <Card><EmptyHint icon={AlertTriangle} text="No hay incidencias en esta vista." /></Card>
       ) : (
         <Card>
-          {filtered.map((i, idx) => (
-            <Row key={i.id} last={idx === filtered.length - 1} style={{ alignItems: "flex-start" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, fontSize: 13.5 }}>{fmtDateShort(i.fecha)}</span>
-                  <Badge tone={tipoTone[i.tipo] || "neutral"}>{i.tipo}</Badge>
-                  <Badge tone={i.status === "cerrada" ? "green" : "red"}>{i.status === "cerrada" ? "Cerrada" : "Abierta"}</Badge>
+          {filtered.map((iRaw, idx) => {
+            const i = normalizeIncidencia(iRaw);
+            return (
+              <Row key={i.id} last={idx === filtered.length - 1} style={{ alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, fontSize: 13.5 }}>{fmtDateShort(i.fecha)}</span>
+                    <Badge tone={tipoTone[i.tipo] || "neutral"}>{i.tipo}</Badge>
+                    <Badge tone={i.status === "cerrada" ? "green" : "red"}>{i.status === "cerrada" ? "Cerrada" : "Abierta"}</Badge>
+                  </div>
+                  {i.teacherIds.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
+                      {i.teacherIds.map((tid) => <Badge key={tid} tone="purple">{teacherName(tid)}</Badge>)}
+                    </div>
+                  )}
+                  {i.notasInvolucrados && <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 4 }}>Otros involucrados: {i.notasInvolucrados}</div>}
+                  <div style={{ fontSize: 13.5 }}>{i.descripcion}</div>
+                  {i.accion && <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 4 }}><strong>Acción:</strong> {i.accion}</div>}
                 </div>
-                {i.involucrados && <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 4 }}>Involucrado(s): {i.involucrados}</div>}
-                <div style={{ fontSize: 13.5 }}>{i.descripcion}</div>
-                {i.accion && <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 4 }}><strong>Acción:</strong> {i.accion}</div>}
-              </div>
-              <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                <IconBtn icon={Check} size={28} tone="green" onClick={() => toggleStatus(i)} />
-                <IconBtn icon={Pencil} size={28} onClick={() => edit(i)} />
-                <IconBtn icon={Trash2} size={28} tone="red" onClick={() => remove(i.id)} />
-              </div>
-            </Row>
-          ))}
+                <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <IconBtn icon={Check} size={28} tone="green" onClick={() => toggleStatus(i)} />
+                  <IconBtn icon={Pencil} size={28} onClick={() => edit(i)} />
+                  <IconBtn icon={Trash2} size={28} tone="red" onClick={() => remove(i.id)} />
+                </div>
+              </Row>
+            );
+          })}
         </Card>
       )}
     </div>
@@ -1341,7 +1891,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
   const edit = (s) => { setDraft({ asistencia: {}, evidencias: [], ...s }); setShowForm(true); };
   const remove = async (id) => {
     if (!confirm("¿Eliminar esta sesión y sus evidencias?")) return;
-    await removeEvidenciaFolder(id);
+    await removeEvidenciaFolder(`cte/${id}`);
     setCte(cte.filter((s) => s.id !== id));
   };
   const cycleStatus = (s) => {
@@ -1365,7 +1915,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
     setUploading(true);
     for (const file of files) {
       try {
-        const { path, size } = await uploadEvidenciaFile(draft.id, file, "foto");
+        const { path, size } = await uploadEvidenciaFile(`cte/${draft.id}`, file, "foto");
         setDraft((d) => ({ ...d, evidencias: [...(d.evidencias || []), { id: uid("ev"), tipo: "foto", nombre: file.name, path, size }] }));
       } catch (err) {
         alert(`No se pudo subir "${file.name}": ${err.message || "error desconocido"}`);
@@ -1383,7 +1933,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
         continue;
       }
       try {
-        const { path, size } = await uploadEvidenciaFile(draft.id, file, "documento");
+        const { path, size } = await uploadEvidenciaFile(`cte/${draft.id}`, file, "documento");
         setDraft((d) => ({ ...d, evidencias: [...(d.evidencias || []), { id: uid("ev"), tipo: "documento", nombre: file.name, path, size }] }));
       } catch (err) {
         alert(`No se pudo subir "${file.name}": ${err.message || "error desconocido"}`);

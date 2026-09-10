@@ -5,3 +5,4 @@ dist
 .DS_Store
 .claude/
 _backup_abril2026/
+.vercel
