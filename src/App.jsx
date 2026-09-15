@@ -132,10 +132,120 @@ function normalizeVisit(v) { return { tipo: "programada", fecha: "", observation
 
 const PLANEACION_TIPOS = ["Evaluación diagnóstica", "Plan Anual", "Planeación Primer Trimestre", "Planeación Segundo Trimestre", "Planeación Tercer Trimestre"];
 function planeacionesForTeacher(t) {
-  return PLANEACION_TIPOS.map((tipo, idx) => ({ id: `pl${t.id}_${idx}`, teacherId: t.id, tipo, status: "pendiente", fecha: "" }));
+  return PLANEACION_TIPOS.map((tipo, idx) => ({ id: `pl${t.id}_${idx}`, teacherId: t.id, tipo, status: "pendiente", fecha: "", evaluacion: null }));
 }
+function normalizePlaneacion(p) { return { evaluacion: null, ...p }; }
 const seedPlaneaciones = (teachers) => teachers.flatMap(planeacionesForTeacher);
 const PLANEACIONES_DRIVE_URL = "https://drive.google.com/drive/folders/1PbrzkXSvc9WtXBfDGrLRyQXmASwfAT9q?usp=sharing";
+
+/* ============================== LISTA DE COTEJO DE PLANEACIONES (NEM) ============================== */
+const NIVEL_COTEJO = {
+  pendiente: { label: "Pendiente de incorporar", tone: "red" },
+  parcial: { label: "Incorporado parcialmente", tone: "orange" },
+  completo: { label: "Incorporado", tone: "green" },
+};
+const NIVEL_COTEJO_ORDER = ["pendiente", "parcial", "completo"];
+
+const CRITERIOS_COMUNES_TRIMESTRAL = [
+  { id: "campo", texto: "Campo formativo y/o asignatura identificado" },
+  { id: "contenido", texto: "Contenido del Programa Sintético especificado" },
+  { id: "pda", texto: "Proceso de Desarrollo de Aprendizaje (PDA) vinculado al contenido" },
+  { id: "eje", texto: "Eje(s) articulador(es) identificado(s)" },
+  { id: "evaluacion", texto: "Evaluación formativa: instrumento(s) y momento(s) especificados" },
+  { id: "inclusion", texto: "Estrategias de inclusión/atención a la diversidad" },
+  { id: "recursos", texto: "Recursos y materiales listados" },
+  { id: "tiempos", texto: "Tiempos/sesiones estimados" },
+];
+
+const CRITERIOS_DIAGNOSTICA = [
+  { id: "instrumento", texto: "Instrumento de diagnóstico definido (examen, rúbrica, portafolio, observación, etc.)" },
+  { id: "aprendizajes_previos", texto: "Aprendizajes/saberes previos que evalúa, ligados al grado y campo formativo" },
+  { id: "aplicacion", texto: "Fecha y forma de aplicación especificadas" },
+  { id: "uso_resultados", texto: "Uso previsto de los resultados" },
+];
+
+const CRITERIOS_PLAN_ANUAL = [
+  { id: "diagnostico_grupo", texto: "Diagnóstico inicial del grupo considerado" },
+  { id: "distribucion", texto: "Campo(s) formativo(s)/asignatura y contenidos distribuidos a lo largo del ciclo" },
+  { id: "ejes_transversales", texto: "Ejes articuladores contemplados de forma transversal" },
+  { id: "metodologias_previstas", texto: "Metodología(s) prevista(s) (ABP, Aprendizaje Servicio, STEAM, Proyectos Comunitarios)" },
+  { id: "calendarizacion", texto: "Calendarización por trimestre" },
+  { id: "vinculacion_pa", texto: "Vinculación con el Programa Analítico del colectivo docente (CTE)" },
+  { id: "mecanismos_eval", texto: "Mecanismos de evaluación previstos a lo largo del año" },
+];
+
+const METODOLOGIAS_NEM = {
+  abp: {
+    nombre: "Aprendizaje Basado en Problemas (ABP)",
+    fases: [
+      { id: "presentamos", nombre: "Presentamos", desc: "Introducir una situación problemática real o ficticia mediante una lectura, imagen o vivencia para despertar el interés." },
+      { id: "recolectamos", nombre: "Recolectamos", desc: "Explorar y recuperar los saberes previos de los alumnos necesarios para comprender la problemática." },
+      { id: "formulemos", nombre: "Formulemos el problema", desc: "Definir con claridad el problema central o el conflicto cognitivo que se va a resolver." },
+      { id: "organicemos", nombre: "Organicemos la experiencia", desc: "Planificar la ruta de trabajo, asignando tareas, tiempos y recursos." },
+      { id: "vivamos", nombre: "Vivamos la experiencia", desc: "Guiar a los alumnos en la indagación individual o en equipo para construir los saberes necesarios y resolver el problema." },
+      { id: "resultados", nombre: "Resultados y análisis", desc: "Visualizar los avances, presentar las soluciones propuestas y reflexionar de manera conjunta sobre el proceso vivido." },
+    ],
+  },
+  as: {
+    nombre: "Aprendizaje Servicio (AS)",
+    fases: [
+      { id: "partida", nombre: "Punto de partida", desc: "Nace de un interés o necesidad de la comunidad. El docente presenta la metodología y activa los saberes de los alumnos." },
+      { id: "se_quiero_saber", nombre: "Lo que sé y lo que quiero saber", desc: "Se delimita el problema social o ambiental que se atenderá, investigando sus causas y consecuencias." },
+      { id: "organicemos_act", nombre: "Organicemos las actividades", desc: "Se planifican de manera coordinada las acciones, los recursos necesarios y los responsables del servicio comunitario." },
+      { id: "creatividad", nombre: "Creatividad en marcha", desc: "Se ejecuta el plan de trabajo; incluye el monitoreo continuo de las actividades y el servicio social acordado." },
+      { id: "compartimos", nombre: "Compartimos y evaluamos lo aprendido", desc: "Se evalúan los resultados del aprendizaje académico, el impacto real del servicio prestado y se realiza una autoevaluación grupal." },
+    ],
+  },
+  steam: {
+    nombre: "Aprendizaje Basado en Indagación (STEAM)",
+    fases: [
+      { id: "introduccion", nombre: "Introducción al tema", desc: "Se introducen los conocimientos previos, se identifica la problemática y se plantean las preguntas de indagación." },
+      { id: "diseno", nombre: "Diseño de la investigación", desc: "Se organiza cómo se responderán las preguntas, definiendo fuentes de información, experimentos u observaciones." },
+      { id: "organizar", nombre: "Organizar y estructurar las respuestas", desc: "Se analizan los datos recolectados, se sintetizan las ideas y se elaboran explicaciones de los fenómenos investigados." },
+      { id: "presentacion", nombre: "Presentación de resultados", desc: "Se comparten las conclusiones de la indagación y se formulan propuestas de solución o aplicaciones técnicas." },
+      { id: "metacognicion", nombre: "Metacognición", desc: "Se reflexiona sobre todo el proceso de aprendizaje realizado, los aciertos y las áreas de mejora." },
+    ],
+  },
+  comunitarios: {
+    nombre: "Aprendizaje Basado en Proyectos Comunitarios",
+    fases: [
+      { id: "identificacion", nombre: "Identificación", grupo: "Planeación", desc: "Proponer planteamientos para introducir el diálogo y detectar un problema real." },
+      { id: "recuperacion", nombre: "Recuperación", grupo: "Planeación", desc: "Rescatar conocimientos previos de los alumnos." },
+      { id: "planificacion", nombre: "Planificación", grupo: "Planeación", desc: "Negociar las actividades, tiempos y productos del proyecto." },
+      { id: "acercamiento", nombre: "Acercamiento", grupo: "Acción", desc: "Explorar el problema en profundidad mediante diversas fuentes." },
+      { id: "comprension_prod", nombre: "Comprensión y producción", grupo: "Acción", desc: "Elaborar las primeras producciones o borradores." },
+      { id: "reconocimiento", nombre: "Reconocimiento", grupo: "Acción", desc: "Identificar avances, dificultades y realizar ajustes." },
+      { id: "concrecion", nombre: "Concreción", grupo: "Acción", desc: "Generar el producto final para responder al problema." },
+      { id: "integracion", nombre: "Integración", grupo: "Intervención", desc: "Compartir las producciones para intercambiar ideas y retroalimentar." },
+      { id: "difusion", nombre: "Difusión", grupo: "Intervención", desc: "Presentar el producto final a la comunidad o al grupo." },
+      { id: "consideraciones", nombre: "Consideraciones", grupo: "Intervención", desc: "Reflexionar sobre el impacto y el proceso de trabajo." },
+      { id: "avances", nombre: "Avances", grupo: "Intervención", desc: "Tomar decisiones para dar continuidad o cerrar el proyecto." },
+    ],
+  },
+};
+
+function blankEvaluacion() {
+  return { metodologia: null, comunes: {}, fases: {}, fecha: "" };
+}
+function criteriosParaTipo(tipo) {
+  if (tipo === "Evaluación diagnóstica") return CRITERIOS_DIAGNOSTICA;
+  if (tipo === "Plan Anual") return CRITERIOS_PLAN_ANUAL;
+  return CRITERIOS_COMUNES_TRIMESTRAL; // trimestrales
+}
+function esTrimestral(tipo) { return tipo.startsWith("Planeación "); }
+// Revisa una evaluación y regresa si está completa y, si no, las orientaciones puntuales para el docente.
+function evaluarPlaneacion(tipo, evaluacion) {
+  const criterios = criteriosParaTipo(tipo);
+  const items = [...criterios.map((c) => ({ id: c.id, nombre: c.texto, desc: null, nivel: evaluacion.comunes?.[c.id] || "pendiente" }))];
+  if (esTrimestral(tipo) && evaluacion.metodologia) {
+    const meta = METODOLOGIAS_NEM[evaluacion.metodologia];
+    meta.fases.forEach((f) => items.push({ id: f.id, nombre: f.nombre, desc: f.desc, nivel: evaluacion.fases?.[f.id] || "pendiente" }));
+  }
+  const metodologiaFalta = esTrimestral(tipo) && !evaluacion.metodologia;
+  const completada = !metodologiaFalta && items.length > 0 && items.every((it) => it.nivel === "completo");
+  const orientaciones = items.filter((it) => it.nivel !== "completo").map((it) => ({ ...it }));
+  return { items, completada, orientaciones, metodologiaFalta };
+}
 
 const GRADOS = ["1°", "2°", "3°"];
 const GRUPOS = ["A", "B", "C", "D", "E", "F"];
@@ -667,7 +777,7 @@ function AppShell({ session }) {
       // Un arreglo vacío es una elección deliberada del usuario y debe respetarse.
       const finalTeachers = (tch !== null ? tch : seedTeachers()).map(normalizeTeacher);
       const finalVisits = (vis !== null ? vis : seedVisits(finalTeachers)).map(normalizeVisit);
-      const finalPlaneaciones = plan !== null ? plan : seedPlaneaciones(finalTeachers);
+      const finalPlaneaciones = (plan !== null ? plan : seedPlaneaciones(finalTeachers)).map(normalizePlaneacion);
       setTeachers(finalTeachers);
       setVisits(finalVisits);
       setObservations(obs || []);
@@ -1101,7 +1211,14 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
   const [editing, setEditing] = useState(null);
 
   const findOrDefault = (teacherId, tipo, idx) =>
-    planeaciones.find((p) => p.teacherId === teacherId && p.tipo === tipo) || { id: `pl${teacherId}_${idx}`, teacherId, tipo, status: "pendiente", fecha: "" };
+    planeaciones.find((p) => p.teacherId === teacherId && p.tipo === tipo) || { id: `pl${teacherId}_${idx}`, teacherId, tipo, status: "pendiente", fecha: "", evaluacion: null };
+
+  const displayFor = (p) => {
+    if (p.status !== "entregada") return { label: "Pendiente", tone: "neutral" };
+    if (!p.evaluacion) return { label: fmtDateShort(p.fecha), tone: "blue" };
+    const { completada } = evaluarPlaneacion(p.tipo, p.evaluacion);
+    return completada ? { label: "Completa", tone: "green" } : { label: "Con observaciones", tone: "orange" };
+  };
 
   const grouped = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -1112,6 +1229,18 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
 
   const totalDone = planeaciones.filter((p) => p.status === "entregada").length;
   const totalAll = teachers.length * PLANEACION_TIPOS.length;
+
+  const setMetodologia = (key) => setEditing((e) => ({ ...e, evaluacion: { ...(e.evaluacion || blankEvaluacion()), metodologia: key || null, fases: {} } }));
+  const toggleComun = (critId) => setEditing((e) => {
+    const ev = e.evaluacion || blankEvaluacion();
+    const next = NIVEL_COTEJO_ORDER[(NIVEL_COTEJO_ORDER.indexOf(ev.comunes?.[critId] || "pendiente") + 1) % 3];
+    return { ...e, evaluacion: { ...ev, comunes: { ...ev.comunes, [critId]: next } } };
+  });
+  const toggleFase = (faseId) => setEditing((e) => {
+    const ev = e.evaluacion || blankEvaluacion();
+    const next = NIVEL_COTEJO_ORDER[(NIVEL_COTEJO_ORDER.indexOf(ev.fases?.[faseId] || "pendiente") + 1) % 3];
+    return { ...e, evaluacion: { ...ev, fases: { ...ev.fases, [faseId]: next } } };
+  });
 
   const save = () => {
     const exists = planeaciones.some((p) => p.id === editing.id);
@@ -1142,15 +1271,18 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
               <div style={{ fontWeight: 700, fontSize: 14.5 }}>{teacher.name}</div>
               <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 10 }}>{teacher.disciplina}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {items.map((p) => (
-                  <button key={p.tipo} onClick={() => setEditing(p)} className="cc-tap" style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center", border: "none", cursor: "pointer",
-                    borderRadius: 10, padding: "8px 10px", background: p.status === "entregada" ? T.greenTint : T.fill, textAlign: "left",
-                  }}>
-                    <span style={{ fontSize: 12.5, color: T.ink }}>{p.tipo}</span>
-                    <Badge tone={p.status === "entregada" ? "green" : "neutral"}>{p.status === "entregada" ? fmtDateShort(p.fecha) : "Pendiente"}</Badge>
-                  </button>
-                ))}
+                {items.map((p) => {
+                  const d = displayFor(p);
+                  return (
+                    <button key={p.tipo} onClick={() => setEditing(p)} className="cc-tap" style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center", border: "none", cursor: "pointer",
+                      borderRadius: 10, padding: "8px 10px", background: T.fill, textAlign: "left",
+                    }}>
+                      <span style={{ fontSize: 12.5, color: T.ink }}>{p.tipo}</span>
+                      <Badge tone={d.tone}>{d.label}</Badge>
+                    </button>
+                  );
+                })}
               </div>
             </Card>
           ))}
@@ -1168,18 +1300,16 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
               {grouped.map(({ teacher, items }) => (
                 <tr key={teacher.id} style={{ borderTop: `0.5px solid ${T.separator}` }}>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>{teacher.name}</td>
-                  {items.map((p) => (
-                    <td key={p.tipo} style={{ ...tdStyle, textAlign: "center" }}>
-                      <button onClick={() => setEditing(p)} className="cc-tap" style={{
-                        border: "none", cursor: "pointer", borderRadius: 100, padding: "5px 10px",
-                        background: p.status === "entregada" ? T.greenTint : T.fill, color: p.status === "entregada" ? "#248A3D" : T.inkSoft,
-                        display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 700,
-                      }}>
-                        {p.status === "entregada" ? <Check size={12} /> : <Clock size={12} />}
-                        {p.status === "entregada" ? fmtDateShort(p.fecha) : "Pendiente"}
-                      </button>
-                    </td>
-                  ))}
+                  {items.map((p) => {
+                    const d = displayFor(p);
+                    return (
+                      <td key={p.tipo} style={{ ...tdStyle, textAlign: "center" }}>
+                        <button onClick={() => setEditing(p)} className="cc-tap" style={{ border: "none", cursor: "pointer", background: "none", padding: 0 }}>
+                          <Badge tone={d.tone}>{d.label}</Badge>
+                        </button>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -1197,6 +1327,59 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
           </Field>
           <Field label="Fecha de entrega"><input type="date" style={inputStyle} value={editing.fecha} onChange={(e) => setEditing({ ...editing, fecha: e.target.value })} /></Field>
           <Btn kind="tinted" size="sm" href={PLANEACIONES_DRIVE_URL}><FileText size={13} /> Abrir carpeta de Drive</Btn>
+
+          {editing.status === "entregada" && (() => {
+            const trimestral = esTrimestral(editing.tipo);
+            const criterios = criteriosParaTipo(editing.tipo);
+            const ev = editing.evaluacion || blankEvaluacion();
+            const result = evaluarPlaneacion(editing.tipo, ev);
+            const isComun = (id) => criterios.some((c) => c.id === id);
+            return (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Lista de cotejo</div>
+                {trimestral && (
+                  <Field label="Metodología utilizada">
+                    <select style={inputStyle} value={ev.metodologia || ""} onChange={(e) => setMetodologia(e.target.value)}>
+                      <option value="">Elegir…</option>
+                      {Object.entries(METODOLOGIAS_NEM).map(([key, m]) => <option key={key} value={key}>{m.nombre}</option>)}
+                    </select>
+                  </Field>
+                )}
+                <Card style={{ marginTop: 10 }}>
+                  {result.items.map((it, idx) => (
+                    <Row key={it.id} last={idx === result.items.length - 1} onClick={() => (isComun(it.id) ? toggleComun(it.id) : toggleFase(it.id))} style={{ alignItems: "flex-start" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{it.nombre}</div>
+                        {it.desc && <div style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 2 }}>{it.desc}</div>}
+                      </div>
+                      <Badge tone={NIVEL_COTEJO[it.nivel].tone}>{NIVEL_COTEJO[it.nivel].label}</Badge>
+                    </Row>
+                  ))}
+                </Card>
+                {trimestral && !ev.metodologia && (
+                  <div style={{ fontSize: 11.5, color: T.inkFaint, marginTop: 6 }}>Elige la metodología para revisar sus fases específicas.</div>
+                )}
+                <div style={{ marginTop: 12 }}>
+                  {result.completada
+                    ? <Badge tone="green">✓ Planeación completa</Badge>
+                    : <Badge tone="orange">Con observaciones</Badge>}
+                </div>
+                {!result.completada && result.orientaciones.length > 0 && (
+                  <Card style={{ padding: 14, marginTop: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Orientaciones para el docente</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {result.orientaciones.map((o) => (
+                        <div key={o.id} style={{ fontSize: 12.5 }}>
+                          <strong>{o.nombre}</strong> · <span style={{ color: T.inkSoft }}>{NIVEL_COTEJO[o.nivel].label}</span>
+                          {o.desc && <div style={{ color: T.inkSoft, marginTop: 2 }}>{o.desc}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+              </div>
+            );
+          })()}
         </Sheet>
       )}
       <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
