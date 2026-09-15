@@ -175,6 +175,7 @@ const RUBRIC = [
   ]},
 ];
 const RUBRIC_ITEM_COUNT = RUBRIC.reduce((n, c) => n + c.items.length, 0);
+const NIVELES_DESEMPENO = { 1: "Insuficiente", 2: "Suficiente", 3: "Bueno", 4: "Destacado" };
 
 /* ============================== DATA LAYER (Supabase) ============================== */
 const KEYS = {
@@ -1165,6 +1166,16 @@ function ObservacionModule({ teachers, observations, setObservations, teacherNam
             <IconBtn icon={Pencil} onClick={() => startEdit(draft)} />
             <IconBtn icon={Printer} onClick={() => window.print()} />
           </div>} />
+        <Card style={{ padding: 16, marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5, color: T.inkSoft, marginBottom: 6 }}>CRITERIOS EVALUADOS</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+            {RUBRIC.map((cat) => <Badge key={cat.id} tone="blue">{cat.id}. {cat.titulo}</Badge>)}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 12.5, color: T.inkSoft, marginBottom: 6 }}>ESCALA DE VALORACIÓN</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {Object.entries(NIVELES_DESEMPENO).map(([n, label]) => <Badge key={n} tone="neutral">{n} · {label}</Badge>)}
+          </div>
+        </Card>
         <Card style={{ padding: 18, marginBottom: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: 10, fontSize: 13, marginBottom: 14 }}>
             <div><strong>Grado/Grupo:</strong> {draft.grado} {draft.grupo}</div>
