@@ -411,6 +411,13 @@ const EmptyHint = ({ text, icon: Icon }) => (
   </div>
 );
 
+const ReportLetterhead = ({ title }) => (
+  <div className="print-only" style={{ textAlign: "center", marginBottom: 18, paddingBottom: 12, borderBottom: "2px solid #1C1C1E" }}>
+    <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.3 }}>SECUNDARIA TÉCNICA No. 84</div>
+    <div style={{ fontSize: 12.5, color: "#555", marginTop: 3 }}>{title} · Ciclo escolar 2026–2027</div>
+  </div>
+);
+
 const FirmasBlock = () => (
   <div className="print-only-flex" style={{ justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginTop: 50 }}>
     {["Docente", "Coordinador(a)", "Director(a)"].map((rol) => (
@@ -896,6 +903,7 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
 
   return (
     <div>
+      <ReportLetterhead title="Calendario de Visitas de Acompañamiento" />
       <ScreenHeader title="Visitas" subtitle={`${completed} de ${visits.length} realizadas`}
         action={<div style={{ display: "flex", gap: 8 }}>
           <Btn kind="tinted" size="sm" onClick={() => setSorpresaDraft({ teacherId: teachers[0]?.id || "", fecha: todayIso(), notas: "" })}><Plus size={13} /> Visita sorpresa</Btn>
@@ -1041,6 +1049,7 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
 
   return (
     <div>
+      <ReportLetterhead title="Seguimiento de Planeaciones Didácticas" />
       <ScreenHeader title="Planeaciones" subtitle={`${totalDone} de ${totalAll} entregables completados`}
         action={<div style={{ display: "flex", gap: 8 }}>
           <Btn kind="tinted" size="sm" href={PLANEACIONES_DRIVE_URL}><FileText size={13} /> Abrir carpeta de Drive</Btn>
@@ -1266,10 +1275,7 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
     const filled = Object.keys(draft.scores || {}).length;
     return (
       <div>
-        <div className="print-only" style={{ textAlign: "center", marginBottom: 18, paddingBottom: 12, borderBottom: "2px solid #1C1C1E" }}>
-          <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.3 }}>SECUNDARIA TÉCNICA No. 84</div>
-          <div style={{ fontSize: 12.5, color: "#555", marginTop: 3 }}>Formato de Observación de Clase · Ciclo escolar 2026–2027</div>
-        </div>
+        <ReportLetterhead title="Formato de Observación de Clase" />
         <ScreenHeader title={teacherName(draft.teacherId)} subtitle={fmtDate(draft.fecha)}
           action={<div style={{ display: "flex", gap: 8 }}>
             <IconBtn icon={ChevronLeft} onClick={() => setMode("list")} />
@@ -1369,6 +1375,7 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
 
   return (
     <div>
+      <ReportLetterhead title="Cronograma de Evaluaciones" />
       <ScreenHeader title="Evaluaciones" subtitle="Cronograma anual de periodos de evaluación"
         action={<Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>} />
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1627,6 +1634,7 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
 
   return (
     <div>
+      <ReportLetterhead title="Expediente del Docente" />
       <ScreenHeader title={teacher.name} subtitle={teacher.disciplina}
         avatar={<TeacherAvatar path={teacher.fotoPath} uploading={photoUploading} onPick={handlePhotoPick} onRemove={removePhoto} />}
         action={<div style={{ display: "flex", gap: 8 }}>
@@ -1895,6 +1903,7 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
 
   return (
     <div>
+      <ReportLetterhead title="Registro de Incidencias" />
       <ScreenHeader title="Incidencias" subtitle={`${incidencias.filter((i) => i.status !== "cerrada").length} abiertas de ${incidencias.length}`}
         action={<div style={{ display: "flex", gap: 8 }}>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
@@ -2092,6 +2101,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
 
   return (
     <div>
+      <ReportLetterhead title="Consejo Técnico Escolar · Minuta de Sesión" />
       <ScreenHeader title="Consejo Técnico" subtitle={`${cte.length} sesión(es) registradas`}
         action={<div style={{ display: "flex", gap: 8 }}>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
