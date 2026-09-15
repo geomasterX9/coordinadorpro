@@ -59,7 +59,7 @@ const GlobalStyle = () => (
       .print-only-flex { display: flex !important; }
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-      .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; break-inside: avoid; page-break-inside: avoid; }
+      .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; }
     }
   `}</style>
 );
