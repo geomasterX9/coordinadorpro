@@ -52,10 +52,11 @@ const GlobalStyle = () => (
     @keyframes cc-spin { to { transform: rotate(360deg); } }
     .cc-scrollx { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     .cc-scrollx::-webkit-scrollbar { display: none; }
-    .print-only { display: none; }
+    .print-only, .print-only-flex { display: none; }
     @media print {
       .no-print { display: none !important; }
       .print-only { display: block !important; }
+      .print-only-flex { display: flex !important; }
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; break-inside: avoid; page-break-inside: avoid; }
@@ -407,6 +408,19 @@ const EmptyHint = ({ text, icon: Icon }) => (
   <div style={{ textAlign: "center", padding: "40px 20px", color: T.inkFaint }}>
     {Icon && <Icon size={30} strokeWidth={1.5} style={{ marginBottom: 10, opacity: 0.6 }} />}
     <div style={{ fontSize: 14 }}>{text}</div>
+  </div>
+);
+
+const FirmasBlock = () => (
+  <div className="print-only-flex" style={{ justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginTop: 50 }}>
+    {["Docente", "Coordinador(a)", "Director(a)"].map((rol) => (
+      <div key={rol} style={{ flex: 1, minWidth: 150, textAlign: "center" }}>
+        <div style={{ height: 46 }} />
+        <div style={{ borderTop: "1px solid #1C1C1E", paddingTop: 6, fontSize: 12, fontWeight: 600, color: "#1C1C1E" }}>
+          Nombre y firma del {rol}
+        </div>
+      </div>
+    ))}
   </div>
 );
 
@@ -994,6 +1008,7 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
           </Card>
         </div>
       )}
+      <FirmasBlock />
     </div>
   );
 }
@@ -1103,6 +1118,7 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
           <Btn kind="tinted" size="sm" href={PLANEACIONES_DRIVE_URL}><FileText size={13} /> Abrir carpeta de Drive</Btn>
         </Sheet>
       )}
+      <FirmasBlock />
     </div>
   );
 }
@@ -1300,6 +1316,7 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
             {draft.autorreflexion && <div style={{ fontSize: 13 }}><strong>Autorreflexión:</strong> {draft.autorreflexion}</div>}
           </Card>
         )}
+        <FirmasBlock />
       </div>
     );
   }
@@ -1398,6 +1415,7 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
       <div style={{ fontSize: 11.5, color: T.inkFaint, marginTop: 14, fontStyle: "italic" }}>
         Nota: las fechas están sujetas a cambio según la organización interna de la escuela y las indicaciones del Departamento de Registro y Certificación.
       </div>
+      <FirmasBlock />
     </div>
   );
 }
@@ -1841,6 +1859,7 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
           )}
         </Card>
       </div>
+      <FirmasBlock />
     </div>
   );
 }
@@ -1941,6 +1960,7 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
           })}
         </Card>
       )}
+      <FirmasBlock />
     </div>
   );
 }
@@ -2162,6 +2182,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
           })}
         </div>
       )}
+      <FirmasBlock />
     </div>
   );
 }
