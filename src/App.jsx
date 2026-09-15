@@ -3,33 +3,38 @@ import {
   CalendarCheck, ClipboardCheck, CalendarClock, Users, AlertTriangle,
   BookOpenCheck, LayoutGrid, Plus, X, Check, ChevronRight, Printer,
   Search, Pencil, Trash2, Clock, ChevronLeft, Image as ImageIcon, Paperclip,
-  FileText, LogOut, Lock
+  FileText, LogOut, Lock, MoreHorizontal, GraduationCap
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
-/* ============================== IOS DESIGN TOKENS ============================== */
+/* ============================== BRAND DESIGN TOKENS ============================== */
+// Paleta "CoordinadorPro": azul índigo como color de marca, con la
+// profundidad y saturación típicas de un producto SaaS comercial,
+// sobre una base neutra clara para mantener la legibilidad de datos.
 const T = {
-  bg: "#F2F2F7",
+  bg: "#F4F5F9",
   bgElevated: "#FFFFFF",
   card: "#FFFFFF",
-  ink: "#1C1C1E",
-  inkSoft: "#6E6E73",
-  inkFaint: "#AEAEB2",
-  separator: "#E5E5EA",
-  fill: "#F2F2F7",
-  blue: "#007AFF",
-  green: "#34C759",
-  red: "#FF3B30",
-  orange: "#FF9500",
-  purple: "#AF52DE",
-  teal: "#30B0C7",
-  indigo: "#5856D6",
-  blueTint: "rgba(0,122,255,0.1)",
-  greenTint: "rgba(52,199,89,0.12)",
-  redTint: "rgba(255,59,48,0.1)",
-  orangeTint: "rgba(255,149,0,0.12)",
-  purpleTint: "rgba(175,82,222,0.12)",
-  tealTint: "rgba(48,176,199,0.12)",
+  ink: "#111827",
+  inkSoft: "#5B6472",
+  inkFaint: "#9AA3B2",
+  separator: "#E6E8F0",
+  fill: "#F0F1F7",
+  blue: "#2F5CF6",
+  blueDark: "#1E3FC4",
+  green: "#16A34A",
+  red: "#E11D48",
+  orange: "#D97706",
+  purple: "#7C3AED",
+  teal: "#0D9488",
+  indigo: "#4F46E5",
+  blueTint: "rgba(47,92,246,0.10)",
+  greenTint: "rgba(22,163,74,0.12)",
+  redTint: "rgba(225,29,72,0.10)",
+  orangeTint: "rgba(217,119,6,0.12)",
+  purpleTint: "rgba(124,58,237,0.12)",
+  tealTint: "rgba(13,148,136,0.12)",
+  brandGradient: "linear-gradient(135deg, #2F5CF6 0%, #4F46E5 100%)",
 };
 
 const sysFont =
@@ -45,7 +50,7 @@ const GlobalStyle = () => (
     .cc-root ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
     .cc-tap { transition: transform .12s ease, opacity .12s ease; }
     .cc-tap:active { transform: scale(0.96); opacity: 0.75; }
-    .cc-row-tap:active { background: #F2F2F7 !important; }
+    .cc-row-tap:active { background: ${T.bg} !important; }
     @keyframes cc-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
     @keyframes cc-fade-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes cc-pop { from { opacity: 0; transform: scale(.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
@@ -316,6 +321,16 @@ function fileSizeLabel(bytes) {
 }
 
 /* ============================== IOS UI PRIMITIVES ============================== */
+const LogoMark = ({ size = 34, radius = 10 }) => (
+  <div style={{
+    width: size, height: size, borderRadius: radius, flexShrink: 0,
+    background: T.brandGradient, display: "flex", alignItems: "center", justifyContent: "center",
+    boxShadow: "0 2px 6px rgba(47,92,246,0.35)",
+  }}>
+    <GraduationCap size={size * 0.58} color="#fff" strokeWidth={2.2} />
+  </div>
+);
+
 const Card = ({ children, style, className, ...rest }) => (
   <div className={["cc-card", className].filter(Boolean).join(" ")} style={{ background: T.card, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 0 0 0.5px rgba(0,0,0,0.04)", ...style }} {...rest}>
     {children}
@@ -456,16 +471,16 @@ const Sheet = ({ title, onClose, onSave, saveLabel = "Guardar", saveDisabled, ch
 );
 
 const ScreenHeader = ({ title, subtitle, action, avatar }) => (
-  <div style={{ marginBottom: 18 }}>
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+  <div style={{ marginBottom: 20 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "10px 12px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
         {avatar}
-        <div>
-          <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.4, margin: 0, color: T.ink }}>{title}</h1>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: "clamp(22px, 6vw, 30px)", fontWeight: 800, letterSpacing: -0.4, margin: 0, color: T.ink }}>{title}</h1>
           {subtitle && <div style={{ color: T.inkSoft, fontSize: 14, marginTop: 3 }}>{subtitle}</div>}
         </div>
       </div>
-      {action && <div className="no-print" style={{ flexShrink: 0, paddingTop: 4 }}>{action}</div>}
+      {action && <div className="no-print" style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>{action}</div>}
     </div>
   </div>
 );
@@ -498,10 +513,8 @@ function Login() {
     <div className="cc-root" style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <GlobalStyle />
       <Card style={{ width: 380, maxWidth: "100%", padding: 28 }}>
-        <div style={{ width: 46, height: 46, borderRadius: 12, background: T.blueTint, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-          <Lock size={22} color={T.blue} />
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: T.ink }}>Coordinación Académica</h1>
+        <LogoMark size={46} radius={13} />
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "16px 0 0", color: T.ink }}>CoordinadorPro</h1>
         <div style={{ fontSize: 13.5, color: T.inkSoft, marginTop: 4, marginBottom: 22 }}>Secundaria Técnica No. 84 · 2026–2027</div>
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -630,6 +643,7 @@ function AppShell({ session }) {
 
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState("dashboard");
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [teachers, setTeachers] = useState([]);
   const [visits, setVisits] = useState([]);
   const [observations, setObservations] = useState([]);
@@ -694,6 +708,10 @@ function AppShell({ session }) {
     { id: "incidencias", label: "Incidencias", icon: AlertTriangle },
     { id: "cte", label: "CTE", icon: BookOpenCheck },
   ];
+  const MOBILE_PRIMARY_IDS = ["dashboard", "visitas", "observacion", "docentes"];
+  const mobilePrimaryNav = MOBILE_PRIMARY_IDS.map((id) => nav.find((n) => n.id === id));
+  const mobileMoreNav = nav.filter((n) => !MOBILE_PRIMARY_IDS.includes(n.id));
+  const isInMoreSection = mobileMoreNav.some((n) => n.id === active);
 
   if (!ready) {
     return (
@@ -715,10 +733,13 @@ function AppShell({ session }) {
       <GlobalStyle />
 
       {!isMobile && (
-        <div className="no-print" style={{ width: 232, flexShrink: 0, borderRight: `0.5px solid ${T.separator}`, padding: "20px 12px", display: "flex", flexDirection: "column", gap: 16, background: T.bgElevated }}>
-          <div style={{ padding: "2px 10px 10px" }}>
-            <div style={{ fontWeight: 800, fontSize: 17, color: T.ink, letterSpacing: -0.2 }}>Coordinación</div>
-            <div style={{ fontSize: 12, color: T.inkFaint, marginTop: 2 }}>Sec. Técnica No. 84 · 2026–2027</div>
+        <div className="no-print" style={{ width: 240, flexShrink: 0, borderRight: `0.5px solid ${T.separator}`, padding: "18px 12px", display: "flex", flexDirection: "column", gap: 16, background: T.bgElevated }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 8px 12px" }}>
+            <LogoMark />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: T.ink, letterSpacing: -0.2, lineHeight: 1.15 }}>CoordinadorPro</div>
+              <div style={{ fontSize: 11.5, color: T.inkFaint, marginTop: 1 }}>Sec. Técnica No. 84</div>
+            </div>
           </div>
           <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {nav.map((n) => {
@@ -727,7 +748,7 @@ function AppShell({ session }) {
               return (
                 <button key={n.id} onClick={() => setActive(n.id)} className="cc-tap" style={{
                   display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: "9px 10px", borderRadius: 9,
-                  border: "none", cursor: "pointer", fontSize: 14, fontWeight: isActive ? 700 : 500,
+                  border: "none", borderLeft: isActive ? `3px solid ${T.blue}` : "3px solid transparent", cursor: "pointer", fontSize: 14, fontWeight: isActive ? 700 : 500,
                   color: isActive ? T.blue : T.ink, background: isActive ? T.blueTint : "transparent",
                 }}>
                   <Icon size={18} strokeWidth={2.1} />
@@ -747,8 +768,11 @@ function AppShell({ session }) {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {isMobile && (
-          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `0.5px solid ${T.separator}`, background: T.bgElevated }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>Coordinación</div>
+          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: `0.5px solid ${T.separator}`, background: T.bgElevated }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <LogoMark size={28} radius={8} />
+              <div style={{ fontWeight: 800, fontSize: 15, color: T.ink }}>CoordinadorPro</div>
+            </div>
             <button onClick={signOut} className="cc-tap" style={{ background: "none", border: "none", color: T.red, display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
               <LogOut size={14} /> Salir
             </button>
@@ -766,13 +790,46 @@ function AppShell({ session }) {
         </div>
       </div>
 
+      {isMobile && showMoreMenu && (
+        <div className="no-print" style={{
+          position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.35)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "cc-fade-in .18s ease",
+        }} onClick={() => setShowMoreMenu(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: T.bg, width: "100%", maxHeight: "70vh", borderRadius: "18px 18px 0 0",
+            display: "flex", flexDirection: "column", animation: "cc-sheet-up .25s cubic-bezier(.32,.72,0,1)",
+            overflow: "hidden", paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+          }}>
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 2px" }}><div style={{ width: 36, height: 5, borderRadius: 3, background: "#D1D1D6" }} /></div>
+            <div style={{ padding: "10px 18px 12px", fontWeight: 800, fontSize: 16, color: T.ink }}>Más secciones</div>
+            <div style={{ overflowY: "auto", padding: "0 10px" }}>
+              {mobileMoreNav.map((n) => {
+                const Icon = n.icon;
+                const isActive = active === n.id;
+                return (
+                  <button key={n.id} onClick={() => { setActive(n.id); setShowMoreMenu(false); }} className="cc-tap" style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", marginBottom: 2,
+                    border: "none", borderRadius: 12, cursor: "pointer", textAlign: "left",
+                    background: isActive ? T.blueTint : "transparent", color: isActive ? T.blue : T.ink,
+                    fontSize: 15, fontWeight: isActive ? 700 : 500,
+                  }}>
+                    <Icon size={20} strokeWidth={2.1} />
+                    {n.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {isMobile && (
         <div className="no-print" style={{
           position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 900, display: "flex", justifyContent: "space-around",
           background: "rgba(249,249,251,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
           borderTop: `0.5px solid ${T.separator}`, padding: "6px 2px calc(6px + env(safe-area-inset-bottom))",
         }}>
-          {nav.map((n) => {
+          {mobilePrimaryNav.map((n) => {
             const Icon = n.icon;
             const isActive = active === n.id;
             return (
@@ -785,6 +842,13 @@ function AppShell({ session }) {
               </button>
             );
           })}
+          <button onClick={() => setShowMoreMenu(true)} style={{
+            background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
+            alignItems: "center", gap: 2, padding: "4px 6px", color: isInMoreSection ? T.blue : T.inkFaint, flex: 1, minWidth: 0,
+          }}>
+            <MoreHorizontal size={22} strokeWidth={isInMoreSection ? 2.4 : 2} />
+            <span style={{ fontSize: 10, fontWeight: isInMoreSection ? 700 : 500, whiteSpace: "nowrap" }}>Más</span>
+          </button>
         </div>
       )}
     </div>
@@ -908,7 +972,7 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
     <div>
       <ReportLetterhead title="Calendario de Visitas de Acompañamiento" />
       <ScreenHeader title="Visitas" subtitle={`${completed} de ${visits.length} realizadas`}
-        action={<div style={{ display: "flex", gap: 8 }}>
+        action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Btn kind="tinted" size="sm" onClick={() => setSorpresaDraft({ teacherId: teachers[0]?.id || "", fecha: todayIso(), notas: "" })}><Plus size={13} /> Visita sorpresa</Btn>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
         </div>} />
@@ -1054,7 +1118,7 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
     <div>
       <ReportLetterhead title="Seguimiento de Planeaciones Didácticas" />
       <ScreenHeader title="Planeaciones" subtitle={`${totalDone} de ${totalAll} entregables completados`}
-        action={<div style={{ display: "flex", gap: 8 }}>
+        action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Btn kind="tinted" size="sm" href={PLANEACIONES_DRIVE_URL}><FileText size={13} /> Abrir carpeta de Drive</Btn>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
         </div>} />
@@ -1280,7 +1344,7 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
       <div>
         <ReportLetterhead title="Formato de Observación de Clase" />
         <ScreenHeader title={teacherName(draft.teacherId)} subtitle={fmtDate(draft.fecha)}
-          action={<div style={{ display: "flex", gap: 8 }}>
+          action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <IconBtn icon={ChevronLeft} onClick={() => setMode("list")} />
             <IconBtn icon={Pencil} onClick={() => startEdit(draft)} />
             <IconBtn icon={Printer} onClick={() => window.print()} />
@@ -1640,7 +1704,7 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
       <ReportLetterhead title="Expediente del Docente" />
       <ScreenHeader title={teacher.name} subtitle={teacher.disciplina}
         avatar={<TeacherAvatar path={teacher.fotoPath} uploading={photoUploading} onPick={handlePhotoPick} onRemove={removePhoto} />}
-        action={<div style={{ display: "flex", gap: 8 }}>
+        action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <IconBtn icon={ChevronLeft} onClick={onBack} />
           <IconBtn icon={Pencil} onClick={openEditBasics} />
           <IconBtn icon={Printer} onClick={() => window.print()} />
@@ -1953,7 +2017,7 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
     <div>
       <ReportLetterhead title="Registro de Incidencias" />
       <ScreenHeader title="Incidencias" subtitle={`${incidencias.filter((i) => i.status !== "cerrada").length} abiertas de ${incidencias.length}`}
-        action={<div style={{ display: "flex", gap: 8 }}>
+        action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
           <Btn kind="filled" size="sm" onClick={() => { setDraft(makeBlank()); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>
         </div>} />
@@ -2174,7 +2238,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
     <div>
       <ReportLetterhead title="Consejo Técnico Escolar · Minuta de Sesión" />
       <ScreenHeader title="Consejo Técnico" subtitle={`${cte.length} sesión(es) registradas`}
-        action={<div style={{ display: "flex", gap: 8 }}>
+        action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
           <Btn kind="filled" size="sm" onClick={() => { setDraft(makeBlank()); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>
         </div>} />
