@@ -60,6 +60,9 @@ const GlobalStyle = () => (
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; }
+      .cc-scrollx { overflow-x: visible !important; }
+      .cc-scrollx table { min-width: 0 !important; width: 100% !important; font-size: 10.5px !important; }
+      .cc-scrollx th, .cc-scrollx td { padding: 6px 4px !important; }
     }
   `}</style>
 );
