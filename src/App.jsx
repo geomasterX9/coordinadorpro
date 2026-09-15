@@ -421,9 +421,9 @@ const ReportLetterhead = ({ title }) => (
   </div>
 );
 
-const FirmasBlock = () => (
+const FirmasBlock = ({ roles = ["Docente", "Coordinador(a)", "Director(a)"] }) => (
   <div className="print-only-flex" style={{ justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginTop: 50 }}>
-    {["Docente", "Coordinador(a)", "Director(a)"].map((rol) => (
+    {roles.map((rol) => (
       <div key={rol} style={{ flex: 1, minWidth: 150, textAlign: "center" }}>
         <div style={{ height: 46 }} />
         <div style={{ borderTop: "1px solid #1C1C1E", paddingTop: 6, fontSize: 12, fontWeight: 600, color: "#1C1C1E" }}>
@@ -1019,7 +1019,7 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
           </Card>
         </div>
       )}
-      <FirmasBlock />
+      <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
     </div>
   );
 }
@@ -1130,7 +1130,7 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
           <Btn kind="tinted" size="sm" href={PLANEACIONES_DRIVE_URL}><FileText size={13} /> Abrir carpeta de Drive</Btn>
         </Sheet>
       )}
-      <FirmasBlock />
+      <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
     </div>
   );
 }
@@ -1425,7 +1425,7 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
       <div style={{ fontSize: 11.5, color: T.inkFaint, marginTop: 14, fontStyle: "italic" }}>
         Nota: las fechas están sujetas a cambio según la organización interna de la escuela y las indicaciones del Departamento de Registro y Certificación.
       </div>
-      <FirmasBlock />
+      <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
     </div>
   );
 }
@@ -1972,7 +1972,7 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
           })}
         </Card>
       )}
-      <FirmasBlock />
+      <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
     </div>
   );
 }
@@ -2195,7 +2195,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
           })}
         </div>
       )}
-      <FirmasBlock />
+      <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
     </div>
   );
 }
