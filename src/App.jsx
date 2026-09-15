@@ -116,9 +116,10 @@ function visitsForTeacher(t) {
   const plan = isA
     ? [["SEPT", "7 al 11"], ["ENERO", "18 al 22"], ["ABRIL", "12 al 16"]]
     : [["OCT", "5 al 9"], ["FEBRERO", "15 al 19"], ["JUNIO", "14 al 18"]];
-  return plan.map(([month, semana], idx) => ({ id: `v${t.id}_${idx}`, teacherId: t.id, month, semana, status: "pendiente", notas: "" }));
+  return plan.map(([month, semana], idx) => ({ id: `v${t.id}_${idx}`, teacherId: t.id, month, semana, status: "pendiente", notas: "", tipo: "programada", fecha: "", observationId: null }));
 }
 const seedVisits = (teachers) => teachers.flatMap(visitsForTeacher);
+function normalizeVisit(v) { return { tipo: "programada", fecha: "", observationId: null, ...v }; }
 
 const PLANEACION_TIPOS = ["Evaluación diagnóstica", "Plan Anual", "Planeación Primer Trimestre", "Planeación Segundo Trimestre", "Planeación Tercer Trimestre"];
 function planeacionesForTeacher(t) {
@@ -627,7 +628,7 @@ function AppShell({ session }) {
       // null = nunca se guardó (primera vez, usar datos de ejemplo).
       // Un arreglo vacío es una elección deliberada del usuario y debe respetarse.
       const finalTeachers = (tch !== null ? tch : seedTeachers()).map(normalizeTeacher);
-      const finalVisits = vis !== null ? vis : seedVisits(finalTeachers);
+      const finalVisits = (vis !== null ? vis : seedVisits(finalTeachers)).map(normalizeVisit);
       const finalPlaneaciones = plan !== null ? plan : seedPlaneaciones(finalTeachers);
       setTeachers(finalTeachers);
       setVisits(finalVisits);
@@ -854,23 +855,51 @@ function Dashboard({ teachers, visits, observations, evalPeriods, incidencias, c
 }
 
 /* ============================== VISITAS MODULE ============================== */
-function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation }) {
+function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation, goToObservationRecord, teacherName }) {
   const [filter, setFilter] = useState("");
+  const [sorpresaDraft, setSorpresaDraft] = useState(null);
   const months = ["SEPT", "OCT", "ENERO", "FEBRERO", "ABRIL", "JUNIO"];
 
   const grouped = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return teachers.filter((t) => !q || t.name.toLowerCase().includes(q) || t.disciplina.toLowerCase().includes(q))
-      .map((t) => ({ teacher: t, visits: visits.filter((v) => v.teacherId === t.id) }));
+      .map((t) => ({ teacher: t, visits: visits.filter((v) => v.teacherId === t.id && v.tipo !== "sorpresa") }));
   }, [teachers, visits, filter]);
+
+  const sorpresas = useMemo(() =>
+    visits.filter((v) => v.tipo === "sorpresa").slice().sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")),
+  [visits]);
 
   const toggleStatus = (visitId) => setVisits(visits.map((v) => v.id === visitId ? { ...v, status: v.status === "realizada" ? "pendiente" : "realizada" } : v));
   const completed = visits.filter((v) => v.status === "realizada").length;
 
+  const saveSorpresa = () => {
+    if (!sorpresaDraft.teacherId || !sorpresaDraft.fecha) return;
+    setVisits([...visits, { id: uid("v"), teacherId: sorpresaDraft.teacherId, month: "SORPRESA", semana: "", status: "realizada", notas: sorpresaDraft.notas, tipo: "sorpresa", fecha: sorpresaDraft.fecha, observationId: null }]);
+    setSorpresaDraft(null);
+  };
+  const removeSorpresa = (id) => setVisits(visits.filter((v) => v.id !== id));
+
   return (
     <div>
       <ScreenHeader title="Visitas" subtitle={`${completed} de ${visits.length} realizadas`}
-        action={<Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>} />
+        action={<div style={{ display: "flex", gap: 8 }}>
+          <Btn kind="tinted" size="sm" onClick={() => setSorpresaDraft({ teacherId: teachers[0]?.id || "", fecha: todayIso(), notas: "" })}><Plus size={13} /> Visita sorpresa</Btn>
+          <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
+        </div>} />
+
+      {sorpresaDraft && (
+        <Sheet title="Registrar visita sorpresa" onClose={() => setSorpresaDraft(null)} onSave={saveSorpresa} saveDisabled={!sorpresaDraft.teacherId || !sorpresaDraft.fecha} isMobile={isMobile}>
+          <Field label="Docente">
+            <select style={inputStyle} value={sorpresaDraft.teacherId} onChange={(e) => setSorpresaDraft({ ...sorpresaDraft, teacherId: e.target.value })}>
+              {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Fecha"><input type="date" style={inputStyle} value={sorpresaDraft.fecha} onChange={(e) => setSorpresaDraft({ ...sorpresaDraft, fecha: e.target.value })} /></Field>
+          <Field label="Notas (opcional)"><textarea style={{ ...inputStyle, minHeight: 70 }} value={sorpresaDraft.notas} onChange={(e) => setSorpresaDraft({ ...sorpresaDraft, notas: e.target.value })} /></Field>
+          <div style={{ fontSize: 11.5, color: T.inkFaint }}>Si además quieres registrar la observación de clase completa, hazlo desde el módulo de Observación y marca ahí la casilla "visita sorpresa" — quedará vinculada automáticamente.</div>
+        </Sheet>
+      )}
       <div className="no-print" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 8, background: T.card, borderRadius: 10, padding: "9px 12px" }}>
         <Search size={15} color={T.inkFaint} />
         <input style={{ border: "none", outline: "none", fontSize: 15, background: "transparent", width: "100%" }} placeholder="Buscar docente o disciplina" value={filter} onChange={(e) => setFilter(e.target.value)} />
@@ -943,6 +972,27 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation 
             </tbody>
           </table>
         </Card>
+      )}
+
+      {sorpresas.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Visitas sorpresa ({sorpresas.length})</div>
+          <Card>
+            {sorpresas.map((v, idx) => (
+              <Row key={v.id} last={idx === sorpresas.length - 1} style={{ alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>{teacherName(v.teacherId)}</div>
+                  <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 2 }}>{fmtDate(v.fecha)}{v.notas ? ` · ${v.notas}` : ""}</div>
+                </div>
+                <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  {v.observationId
+                    ? <Btn kind="text" size="sm" onClick={() => goToObservationRecord(v.observationId)}>Ver observación</Btn>
+                    : <IconBtn icon={Trash2} size={28} tone="red" onClick={() => removeSorpresa(v.id)} />}
+                </div>
+              </Row>
+            ))}
+          </Card>
+        </div>
       )}
     </div>
   );
@@ -1058,13 +1108,13 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
 }
 
 /* ============================== OBSERVACIÓN MODULE ============================== */
-function ObservacionModule({ teachers, observations, setObservations, teacherName, isMobile, obsPrefill, clearObsPrefill, obsViewPrefill, clearObsViewPrefill }) {
+function ObservacionModule({ teachers, observations, setObservations, visits, setVisits, teacherName, isMobile, obsPrefill, clearObsPrefill, obsViewPrefill, clearObsViewPrefill }) {
   const [mode, setMode] = useState("list");
   const [editingId, setEditingId] = useState(null);
   const blank = () => ({
     id: uid("o"), teacherId: teachers[0]?.id || "", grado: "", grupo: "", asignatura: "", tematica: "",
     fecha: "", horaInicio: "", horaTermino: "", alumnosLista: "", alumnosPresentes: "",
-    scores: {}, observaciones: "", recomendaciones: "", autorreflexion: "",
+    scores: {}, observaciones: "", recomendaciones: "", autorreflexion: "", sorpresa: false,
   });
   const [draft, setDraft] = useState(blank());
 
@@ -1086,13 +1136,39 @@ function ObservacionModule({ teachers, observations, setObservations, teacherNam
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obsViewPrefill]);
 
+  const linkVisit = (obs) => {
+    const alreadyLinked = visits.find((v) => v.observationId === obs.id);
+    if (alreadyLinked) {
+      setVisits(visits.map((v) => (v.id === alreadyLinked.id ? { ...v, fecha: obs.fecha, status: "realizada" } : v)));
+      return;
+    }
+    if (!obs.sorpresa) {
+      const pending = visits.find((v) => v.teacherId === obs.teacherId && v.status === "pendiente" && v.tipo !== "sorpresa");
+      if (pending) {
+        setVisits(visits.map((v) => (v.id === pending.id ? { ...v, status: "realizada", fecha: obs.fecha, observationId: obs.id } : v)));
+        return;
+      }
+    }
+    setVisits([...visits, { id: uid("v"), teacherId: obs.teacherId, month: "SORPRESA", semana: "", status: "realizada", notas: "", tipo: "sorpresa", fecha: obs.fecha, observationId: obs.id }]);
+  };
+  const unlinkVisit = (observationId) => {
+    const linked = visits.find((v) => v.observationId === observationId);
+    if (!linked) return;
+    if (linked.tipo === "sorpresa") setVisits(visits.filter((v) => v.id !== linked.id));
+    else setVisits(visits.map((v) => (v.id === linked.id ? { ...v, status: "pendiente", fecha: "", observationId: null } : v)));
+  };
+
   const save = () => {
     if (!draft.teacherId || !draft.fecha) return;
     if (editingId) setObservations(observations.map((o) => (o.id === editingId ? draft : o)));
     else setObservations([draft, ...observations]);
+    linkVisit(draft);
     setMode("list");
   };
-  const remove = (id) => setObservations(observations.filter((o) => o.id !== id));
+  const remove = (id) => {
+    setObservations(observations.filter((o) => o.id !== id));
+    unlinkVisit(id);
+  };
   const setScore = (itemId, val) => setDraft({ ...draft, scores: { ...draft.scores, [itemId]: val } });
   const scoreAvg = (o) => {
     const vals = Object.values(o.scores || {}).filter(Boolean);
@@ -1130,6 +1206,13 @@ function ObservacionModule({ teachers, observations, setObservations, teacherNam
           <Field label="Alumnos en lista"><input type="number" style={inputStyle} value={draft.alumnosLista} onChange={(e) => setDraft({ ...draft, alumnosLista: e.target.value })} /></Field>
           <Field label="Alumnos presentes"><input type="number" style={inputStyle} value={draft.alumnosPresentes} onChange={(e) => setDraft({ ...draft, alumnosPresentes: e.target.value })} /></Field>
         </div>
+
+        <label onClick={() => setDraft({ ...draft, sorpresa: !draft.sorpresa })} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, cursor: "pointer" }}>
+          <span style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: draft.sorpresa ? T.orange : T.fill, border: draft.sorpresa ? "none" : `1.5px solid ${T.separator}` }}>
+            {draft.sorpresa && <Check size={13} color="#fff" strokeWidth={3} />}
+          </span>
+          <span>Fue una visita sorpresa (no programada en el calendario)</span>
+        </label>
 
         {RUBRIC.map((cat) => (
           <div key={cat.id}>
@@ -1194,7 +1277,10 @@ function ObservacionModule({ teachers, observations, setObservations, teacherNam
             <div><strong>Hora:</strong> {draft.horaInicio}–{draft.horaTermino}</div>
             <div><strong>Alumnos:</strong> {draft.alumnosPresentes}/{draft.alumnosLista}</div>
           </div>
-          <Badge tone="orange">Promedio {scoreAvg(draft)} / 4 · {filled}/{RUBRIC_ITEM_COUNT} ítems</Badge>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Badge tone="orange">Promedio {scoreAvg(draft)} / 4 · {filled}/{RUBRIC_ITEM_COUNT} ítems</Badge>
+            {draft.sorpresa && <Badge tone="purple">Visita sorpresa</Badge>}
+          </div>
         </Card>
         {RUBRIC.map((cat) => (
           <Card key={cat.id} style={{ marginBottom: 10 }}>
@@ -1229,7 +1315,10 @@ function ObservacionModule({ teachers, observations, setObservations, teacherNam
           {observations.map((o, idx) => (
             <Row key={o.id} last={idx === observations.length - 1} onClick={() => view(o)}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{teacherName(o.teacherId)}</div>
+                <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                  {teacherName(o.teacherId)}
+                  {o.sorpresa && <Badge tone="purple">Sorpresa</Badge>}
+                </div>
                 <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 2 }}>{fmtDateShort(o.fecha)} · {o.asignatura || "sin asignatura"} · {o.grado}{o.grupo}</div>
               </div>
               <Badge tone="orange">{scoreAvg(o)}</Badge>
