@@ -1766,7 +1766,10 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
   return (
     <div>
       <ScreenHeader title="Incidencias" subtitle={`${incidencias.filter((i) => i.status !== "cerrada").length} abiertas de ${incidencias.length}`}
-        action={<Btn kind="filled" size="sm" onClick={() => { setDraft(blank); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>} />
+        action={<div style={{ display: "flex", gap: 8 }}>
+          <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
+          <Btn kind="filled" size="sm" onClick={() => { setDraft(blank); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>
+        </div>} />
       <div className="no-print" style={{ marginBottom: 14 }}>
         <SegmentedControl value={filterStatus} onChange={setFilterStatus} options={[{ value: "todas", label: "Todas" }, { value: "abierta", label: "Abiertas" }, { value: "cerrada", label: "Cerradas" }]} />
       </div>
@@ -1959,7 +1962,10 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
   return (
     <div>
       <ScreenHeader title="Consejo Técnico" subtitle={`${cte.length} sesión(es) registradas`}
-        action={<Btn kind="filled" size="sm" onClick={() => { setDraft(makeBlank()); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>} />
+        action={<div style={{ display: "flex", gap: 8 }}>
+          <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
+          <Btn kind="filled" size="sm" onClick={() => { setDraft(makeBlank()); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>
+        </div>} />
 
       {showForm && (
         <Sheet title={cte.some((s) => s.id === draft.id) ? "Editar sesión" : "Nueva sesión"} onClose={() => setShowForm(false)} onSave={save} saveDisabled={!draft.fecha || !draft.tema} isMobile={isMobile}>
@@ -2022,7 +2028,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 700, fontSize: 13.5 }}>{fmtDateShort(s.fecha)}</span>
-                      <button className="no-print" onClick={(e) => { e.stopPropagation(); cycleStatus(s); }} style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+                      <button onClick={(e) => { e.stopPropagation(); cycleStatus(s); }} style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}>
                         <Badge tone={statusTone[s.status]}>{statusLabel[s.status]}</Badge>
                       </button>
                     </div>
