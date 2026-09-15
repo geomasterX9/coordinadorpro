@@ -52,7 +52,14 @@ const GlobalStyle = () => (
     @keyframes cc-spin { to { transform: rotate(360deg); } }
     .cc-scrollx { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     .cc-scrollx::-webkit-scrollbar { display: none; }
-    @media print { .no-print { display: none !important; } }
+    .print-only { display: none; }
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      html, body { background: #fff !important; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+      .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; break-inside: avoid; page-break-inside: avoid; }
+    }
   `}</style>
 );
 
@@ -304,8 +311,8 @@ function fileSizeLabel(bytes) {
 }
 
 /* ============================== IOS UI PRIMITIVES ============================== */
-const Card = ({ children, style, ...rest }) => (
-  <div style={{ background: T.card, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 0 0 0.5px rgba(0,0,0,0.04)", ...style }} {...rest}>
+const Card = ({ children, style, className, ...rest }) => (
+  <div className={["cc-card", className].filter(Boolean).join(" ")} style={{ background: T.card, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 0 0 0.5px rgba(0,0,0,0.04)", ...style }} {...rest}>
     {children}
   </div>
 );
@@ -1160,6 +1167,10 @@ function ObservacionModule({ teachers, observations, setObservations, teacherNam
     const filled = Object.keys(draft.scores || {}).length;
     return (
       <div>
+        <div className="print-only" style={{ textAlign: "center", marginBottom: 18, paddingBottom: 12, borderBottom: "2px solid #1C1C1E" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.3 }}>SECUNDARIA TÉCNICA No. 84</div>
+          <div style={{ fontSize: 12.5, color: "#555", marginTop: 3 }}>Formato de Observación de Clase · Ciclo escolar 2026–2027</div>
+        </div>
         <ScreenHeader title={teacherName(draft.teacherId)} subtitle={fmtDate(draft.fecha)}
           action={<div style={{ display: "flex", gap: 8 }}>
             <IconBtn icon={ChevronLeft} onClick={() => setMode("list")} />
