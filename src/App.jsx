@@ -332,7 +332,7 @@ const LogoMark = ({ size = 34, radius = 10 }) => (
 );
 
 const Card = ({ children, style, className, ...rest }) => (
-  <div className={["cc-card", className].filter(Boolean).join(" ")} style={{ background: T.card, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 0 0 0.5px rgba(0,0,0,0.04)", ...style }} {...rest}>
+  <div className={["cc-card", className].filter(Boolean).join(" ")} style={{ background: T.card, borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(17,24,39,0.06), 0 1px 2px rgba(17,24,39,0.04)", border: "1px solid rgba(17,24,39,0.04)", ...style }} {...rest}>
     {children}
   </div>
 );
@@ -349,22 +349,22 @@ const Row = ({ children, onClick, last, style }) => (
 
 const Badge = ({ children, tone = "neutral" }) => {
   const map = {
-    neutral: { bg: "#EBEBF0", fg: T.inkSoft },
-    green: { bg: T.greenTint, fg: "#248A3D" },
-    orange: { bg: T.orangeTint, fg: "#C36700" },
+    neutral: { bg: T.fill, fg: T.inkSoft },
+    green: { bg: T.greenTint, fg: T.green },
+    orange: { bg: T.orangeTint, fg: T.orange },
     red: { bg: T.redTint, fg: T.red },
     blue: { bg: T.blueTint, fg: T.blue },
     purple: { bg: T.purpleTint, fg: T.purple },
-    teal: { bg: T.tealTint, fg: "#1E7E8C" },
+    teal: { bg: T.tealTint, fg: T.teal },
   };
   const c = map[tone] || map.neutral;
-  return <span style={{ background: c.bg, color: c.fg, fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 100, whiteSpace: "nowrap", lineHeight: 1.5 }}>{children}</span>;
+  return <span style={{ background: c.bg, color: c.fg, fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 100, whiteSpace: "nowrap", lineHeight: 1.5, border: `1px solid ${c.fg}26` }}>{children}</span>;
 };
 
 const Btn = ({ children, onClick, kind = "filled", tone = "blue", size = "md", style, disabled, type = "button", href, ...rest }) => {
   const color = T[tone] || T.blue;
   const base = {
-    filled: { background: disabled ? "#C7C7CC" : color, color: "#fff", border: "none" },
+    filled: { background: disabled ? "#C7C7CC" : (tone === "blue" ? T.brandGradient : color), color: "#fff", border: "none" },
     tinted: { background: disabled ? "#EBEBF0" : (tone === "red" ? T.redTint : T.blueTint), color: disabled ? T.inkFaint : color, border: "none" },
     text: { background: "transparent", color: disabled ? T.inkFaint : color, border: "none", padding: "6px 4px" },
     outline: { background: "#fff", color, border: `1px solid ${T.separator}` },
@@ -883,24 +883,29 @@ function Dashboard({ teachers, visits, observations, evalPeriods, incidencias, c
   const cteOpen = cte.filter((s) => s.status !== "cumplido").length;
 
   const cards = [
-    { label: "Docentes", value: teachers.length, tone: "blue", onClick: () => setActive("docentes") },
-    { label: "Visitas realizadas", value: `${completed}/${visits.length}`, sub: `${pct}%`, tone: "green", onClick: () => setActive("visitas") },
-    { label: "Promedio observación", value: avgScore ?? "—", sub: avgScore ? "de 4" : "sin datos", tone: "orange", onClick: () => setActive("observacion") },
-    { label: "Incidencias abiertas", value: openIncidents, tone: "red", onClick: () => setActive("incidencias") },
+    { label: "Docentes", value: teachers.length, tone: "blue", icon: Users, onClick: () => setActive("docentes") },
+    { label: "Visitas realizadas", value: `${completed}/${visits.length}`, sub: `${pct}%`, tone: "green", icon: CalendarCheck, onClick: () => setActive("visitas") },
+    { label: "Promedio observación", value: avgScore ?? "—", sub: avgScore ? "de 4" : "sin datos", tone: "orange", icon: ClipboardCheck, onClick: () => setActive("observacion") },
+    { label: "Incidencias abiertas", value: openIncidents, tone: "red", icon: AlertTriangle, onClick: () => setActive("incidencias") },
   ];
 
   return (
     <div>
       <ScreenHeader title="Inicio" subtitle="Ciclo escolar 2026–2027" />
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 18 }}>
-        {cards.map((c) => (
-          <Card key={c.label} onClick={c.onClick} className="cc-tap" style={{ padding: 16, cursor: "pointer" }}>
-            <div style={{ width: 8, height: 8, borderRadius: 4, background: T[c.tone], marginBottom: 10 }} />
-            <div style={{ fontSize: 26, fontWeight: 800, color: T.ink, letterSpacing: -0.5 }}>{c.value}</div>
-            <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>{c.label}</div>
-            {c.sub && <div style={{ fontSize: 11, color: T.inkFaint, marginTop: 2 }}>{c.sub}</div>}
-          </Card>
-        ))}
+        {cards.map((c) => {
+          const Icon = c.icon;
+          return (
+            <Card key={c.label} onClick={c.onClick} className="cc-tap" style={{ padding: 16, cursor: "pointer" }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: T[`${c.tone}Tint`], display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                <Icon size={17} color={T[c.tone]} strokeWidth={2.3} />
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: T.ink, letterSpacing: -0.5 }}>{c.value}</div>
+              <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>{c.label}</div>
+              {c.sub && <div style={{ fontSize: 11, color: T.inkFaint, marginTop: 2 }}>{c.sub}</div>}
+            </Card>
+          );
+        })}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr", gap: 12 }}>
         <Card style={{ padding: 18 }}>
