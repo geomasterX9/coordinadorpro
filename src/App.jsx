@@ -273,8 +273,8 @@ function normalizeTeacher(t) {
 }
 // Migra en memoria las incidencias viejas (involucrados en texto libre) al nuevo formato con teacherIds.
 function normalizeIncidencia(i) {
-  if (i.teacherIds) return { notasInvolucrados: "", ...i };
-  return { ...i, teacherIds: [], notasInvolucrados: i.involucrados || "" };
+  if (i.teacherIds) return { notasInvolucrados: "", evidencias: [], ...i };
+  return { ...i, teacherIds: [], notasInvolucrados: i.involucrados || "", evidencias: i.evidencias || [] };
 }
 const NOMBRAMIENTOS = ["Base", "Interinato", "Honorarios", "Contrato", "Otro"];
 
@@ -1886,19 +1886,64 @@ const ChipToggle = ({ label, active, onClick }) => (
 function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, teacherName, setActive }) {
   const [showForm, setShowForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState("todas");
-  const blank = { id: null, fecha: "", teacherIds: [], notasInvolucrados: "", tipo: "Académica", descripcion: "", accion: "", status: "abierta" };
-  const [draft, setDraft] = useState(blank);
+  const [uploading, setUploading] = useState(false);
+  const photoInputRef = useRef(null);
+  const docInputRef = useRef(null);
+  const makeBlank = () => ({ id: uid("i"), fecha: "", teacherIds: [], notasInvolucrados: "", tipo: "Académica", descripcion: "", accion: "", status: "abierta", evidencias: [] });
+  const [draft, setDraft] = useState(makeBlank);
 
   const save = () => {
     if (!draft.fecha || !draft.descripcion) return;
-    if (draft.id) setIncidencias(incidencias.map((i) => (i.id === draft.id ? draft : i)));
-    else setIncidencias([{ ...draft, id: uid("i") }, ...incidencias]);
-    setDraft(blank); setShowForm(false);
+    const exists = incidencias.some((i) => i.id === draft.id);
+    setIncidencias(exists ? incidencias.map((i) => (i.id === draft.id ? draft : i)) : [draft, ...incidencias]);
+    setDraft(makeBlank()); setShowForm(false);
   };
   const edit = (i) => { setDraft(normalizeIncidencia(i)); setShowForm(true); };
-  const remove = (id) => setIncidencias(incidencias.filter((i) => i.id !== id));
+  const remove = async (id) => {
+    if (!confirm("¿Eliminar esta incidencia y sus evidencias?")) return;
+    await removeEvidenciaFolder(`incidencias/${id}`);
+    setIncidencias(incidencias.filter((i) => i.id !== id));
+  };
   const toggleStatus = (i) => setIncidencias(incidencias.map((x) => x.id === i.id ? { ...x, status: x.status === "cerrada" ? "abierta" : "cerrada" } : x));
   const toggleDraftTeacher = (id) => setDraft((d) => ({ ...d, teacherIds: d.teacherIds.includes(id) ? d.teacherIds.filter((x) => x !== id) : [...d.teacherIds, id] }));
+
+  const handlePhotoUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    setUploading(true);
+    for (const file of files) {
+      try {
+        const { path, size } = await uploadEvidenciaFile(`incidencias/${draft.id}`, file, "foto");
+        setDraft((d) => ({ ...d, evidencias: [...(d.evidencias || []), { id: uid("ev"), tipo: "foto", nombre: file.name, path, size }] }));
+      } catch (err) {
+        alert(`No se pudo subir "${file.name}": ${err.message || "error desconocido"}`);
+      }
+    }
+    setUploading(false);
+    e.target.value = "";
+  };
+  const handleDocUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    setUploading(true);
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) {
+        alert(`"${file.name}" pesa más de 20 MB y no se puede subir.`);
+        continue;
+      }
+      try {
+        const { path, size } = await uploadEvidenciaFile(`incidencias/${draft.id}`, file, "documento");
+        setDraft((d) => ({ ...d, evidencias: [...(d.evidencias || []), { id: uid("ev"), tipo: "documento", nombre: file.name, path, size }] }));
+      } catch (err) {
+        alert(`No se pudo subir "${file.name}": ${err.message || "error desconocido"}`);
+      }
+    }
+    setUploading(false);
+    e.target.value = "";
+  };
+  const removeEvidencia = async (id) => {
+    const ev = draft.evidencias.find((e) => e.id === id);
+    if (ev?.path) await removeEvidenciaFile(ev.path);
+    setDraft((d) => ({ ...d, evidencias: (d.evidencias || []).filter((x) => x.id !== id) }));
+  };
 
   const filtered = incidencias.filter((i) => filterStatus === "todas" || i.status === filterStatus);
   const tipos = ["Académica", "Disciplina", "Administrativa", "Otra"];
@@ -1910,7 +1955,7 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
       <ScreenHeader title="Incidencias" subtitle={`${incidencias.filter((i) => i.status !== "cerrada").length} abiertas de ${incidencias.length}`}
         action={<div style={{ display: "flex", gap: 8 }}>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
-          <Btn kind="filled" size="sm" onClick={() => { setDraft(blank); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>
+          <Btn kind="filled" size="sm" onClick={() => { setDraft(makeBlank()); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>
         </div>} />
       <div className="no-print" style={{ marginBottom: 14 }}>
         <SegmentedControl value={filterStatus} onChange={setFilterStatus} options={[{ value: "todas", label: "Todas" }, { value: "abierta", label: "Abiertas" }, { value: "cerrada", label: "Cerradas" }]} />
@@ -1936,6 +1981,26 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
           <Field label="Otras personas involucradas (opcional)"><input style={inputStyle} placeholder="Alumnos, padres de familia, etc." value={draft.notasInvolucrados} onChange={(e) => setDraft({ ...draft, notasInvolucrados: e.target.value })} /></Field>
           <Field label="Descripción"><textarea style={{ ...inputStyle, minHeight: 70 }} value={draft.descripcion} onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })} /></Field>
           <Field label="Acción tomada"><textarea style={{ ...inputStyle, minHeight: 70 }} value={draft.accion} onChange={(e) => setDraft({ ...draft, accion: e.target.value })} /></Field>
+
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Evidencias</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <Btn kind="tinted" size="sm" disabled={uploading} onClick={() => photoInputRef.current?.click()}><ImageIcon size={14} /> {uploading ? "Subiendo…" : "Agregar foto"}</Btn>
+              <Btn kind="tinted" size="sm" disabled={uploading} onClick={() => docInputRef.current?.click()}><Paperclip size={14} /> Agregar documento</Btn>
+            </div>
+            <input ref={photoInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handlePhotoUpload} />
+            <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" multiple style={{ display: "none" }} onChange={handleDocUpload} />
+            {draft.evidencias?.length ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {draft.evidencias.map((ev) => ev.tipo === "foto"
+                  ? <EvidenceThumb key={ev.id} path={ev.path} onRemove={() => removeEvidencia(ev.id)} />
+                  : <DocChip key={ev.id} ev={ev} onRemove={() => removeEvidencia(ev.id)} />)}
+              </div>
+            ) : <div style={{ fontSize: 12, color: T.inkFaint }}>Sin evidencias todavía. Puedes escanear o fotografiar quejas en papel y subirlas aquí.</div>}
+            <div style={{ fontSize: 11, color: T.inkFaint, marginTop: 8 }}>
+              Las fotos y documentos se guardan en Supabase Storage, dentro de tu propio proyecto.
+            </div>
+          </div>
         </Sheet>
       )}
 
@@ -1961,6 +2026,9 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
                   {i.notasInvolucrados && <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 4 }}>Otros involucrados: {i.notasInvolucrados}</div>}
                   <div style={{ fontSize: 13.5 }}>{i.descripcion}</div>
                   {i.accion && <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 4 }}><strong>Acción:</strong> {i.accion}</div>}
+                  {i.evidencias?.length > 0 && (
+                    <div style={{ marginTop: 6 }}><Badge tone="blue">{i.evidencias.length} evidencia{i.evidencias.length > 1 ? "s" : ""}</Badge></div>
+                  )}
                 </div>
                 <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   <IconBtn icon={Check} size={28} tone="green" onClick={() => toggleStatus(i)} />
