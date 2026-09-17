@@ -34,11 +34,11 @@ const T = {
   orangeTint: "oklch(60% 0.15 55 / 0.10)",
   purpleTint: "oklch(52% 0.11 300 / 0.10)",
   tealTint: "oklch(52% 0.09 200 / 0.10)",
-  sidebar: "oklch(19% 0.02 260)",
-  sidebarActive: "oklch(30% 0.04 155)",
-  sidebarBorder: "oklch(28% 0.02 260)",
-  sidebarText: "oklch(80% 0.012 260)",
-  sidebarTextMuted: "oklch(60% 0.016 260)",
+  sidebar: "oklch(27% 0.02 260)",
+  sidebarActive: "oklch(35% 0.05 155)",
+  sidebarBorder: "oklch(35% 0.02 260)",
+  sidebarText: "oklch(82% 0.012 260)",
+  sidebarTextMuted: "oklch(64% 0.016 260)",
 };
 
 const sysFont =
@@ -608,6 +608,8 @@ const ScreenHeader = ({ title, subtitle, action, avatar }) => (
 
 /* ============================== AUTH ============================== */
 function Login() {
+  const rootRef = useRef(null);
+  const isMobile = useIsMobile(rootRef);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -631,27 +633,32 @@ function Login() {
   };
 
   return (
-    <div className="cc-root" style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div ref={rootRef} className="cc-root" style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 0 : 20 }}>
       <GlobalStyle />
-      <div style={{ width: 880, maxWidth: "100%", minHeight: 520, display: "flex", flexWrap: "wrap", borderRadius: 14, overflow: "hidden", border: `1px solid ${T.separator}`, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+      <div style={{ width: 880, maxWidth: "100%", minHeight: isMobile ? "100vh" : 520, display: "flex", flexWrap: "wrap", alignContent: "flex-start", borderRadius: isMobile ? 0 : 14, overflow: "hidden", border: isMobile ? "none" : `1px solid ${T.separator}`, boxShadow: isMobile ? "none" : "0 1px 3px rgba(0,0,0,0.05)" }}>
 
         <div style={{
-          flex: "1 1 340px", minWidth: 300, background: T.sidebar, position: "relative", overflow: "hidden",
-          display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 40,
-          backgroundImage: `repeating-linear-gradient(115deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 34px)`,
+          flex: isMobile ? "0 0 auto" : "1 1 340px", width: isMobile ? "100%" : "auto", minWidth: isMobile ? "100%" : 300, background: T.sidebar, position: "relative", overflow: "hidden",
+          display: "flex", flexDirection: isMobile ? "row" : "column", alignItems: isMobile ? "center" : "stretch", justifyContent: isMobile ? "flex-start" : "space-between",
+          padding: isMobile ? "18px 20px" : 40,
+          backgroundImage: isMobile ? "none" : `repeating-linear-gradient(115deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 34px)`,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <LogoMark size={30} radius={8} />
-            <span style={{ fontFamily: headFont, fontSize: 17, fontWeight: 600, color: "#fff" }}>CoordinadorPro</span>
+            <LogoMark size={isMobile ? 26 : 30} radius={8} />
+            <span style={{ fontFamily: headFont, fontSize: isMobile ? 15 : 17, fontWeight: 600, color: "#fff" }}>CoordinadorPro</span>
           </div>
-          <div>
-            <div style={{ fontFamily: headFont, fontSize: 28, fontWeight: 600, color: "#fff", lineHeight: 1.3, maxWidth: 300 }}>Coordinación académica, en un solo lugar.</div>
-            <div style={{ fontSize: 13.5, color: T.sidebarTextMuted, marginTop: 14, maxWidth: 280, lineHeight: 1.6 }}>Visitas, observación de clase, planeaciones y expedientes docentes de la Secundaria Técnica No. 84.</div>
-          </div>
-          <div style={{ fontSize: 12, color: T.sidebarTextMuted }}>Ciclo escolar 2026–2027</div>
+          {!isMobile && (
+            <>
+              <div>
+                <div style={{ fontFamily: headFont, fontSize: 28, fontWeight: 600, color: "#fff", lineHeight: 1.3, maxWidth: 300 }}>Coordinación académica, en un solo lugar.</div>
+                <div style={{ fontSize: 13.5, color: T.sidebarTextMuted, marginTop: 14, maxWidth: 280, lineHeight: 1.6 }}>Visitas, observación de clase, planeaciones y expedientes docentes de la Secundaria Técnica No. 84.</div>
+              </div>
+              <div style={{ fontSize: 12, color: T.sidebarTextMuted }}>Ciclo escolar 2026–2027</div>
+            </>
+          )}
         </div>
 
-        <div style={{ flex: "1 1 340px", minWidth: 300, background: T.card, display: "flex", flexDirection: "column", justifyContent: "center", padding: 48 }}>
+        <div style={{ flex: "1 1 340px", minWidth: 300, background: T.card, display: "flex", flexDirection: "column", justifyContent: "center", padding: isMobile ? "32px 24px" : 48 }}>
           <div style={{ maxWidth: 320, width: "100%" }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: T.blue, marginBottom: 8 }}>BIENVENIDO DE VUELTA</div>
             <h1 style={{ fontFamily: headFont, fontSize: 25, fontWeight: 600, color: T.ink, margin: "0 0 28px" }}>Inicia sesión</h1>
@@ -909,12 +916,12 @@ function AppShell({ session }) {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {isMobile && (
-          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: T.sidebar }}>
+          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: `1px solid ${T.separator}`, background: T.bgElevated }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
               <LogoMark size={28} radius={8} />
-              <div style={{ fontFamily: headFont, fontWeight: 600, fontSize: 15, color: "#fff" }}>CoordinadorPro</div>
+              <div style={{ fontFamily: headFont, fontWeight: 600, fontSize: 15, color: T.ink }}>CoordinadorPro</div>
             </div>
-            <button onClick={signOut} className="cc-tap" style={{ background: "none", border: "none", color: "oklch(72% 0.15 25)", display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={signOut} className="cc-tap" style={{ background: "none", border: "none", color: T.red, display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
               <LogOut size={14} /> Salir
             </button>
           </div>
