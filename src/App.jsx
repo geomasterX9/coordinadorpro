@@ -8,44 +8,51 @@ import {
 import { supabase } from "./supabaseClient";
 
 /* ============================== BRAND DESIGN TOKENS ============================== */
-// Paleta "CoordinadorPro": azul índigo como color de marca, con la
-// profundidad y saturación típicas de un producto SaaS comercial,
-// sobre una base neutra clara para mantener la legibilidad de datos.
+// Dirección "Estudio SaaS moderno": sidebar casi negro, acento verde
+// esmeralda (no el azul genérico de siempre), tipografía geométrica,
+// y paneles con borde fino en vez de tarjetas con relleno de color.
 const T = {
-  bg: "#F4F5F9",
-  bgElevated: "#FFFFFF",
-  card: "#FFFFFF",
-  ink: "#111827",
-  inkSoft: "#5B6472",
-  inkFaint: "#9AA3B2",
-  separator: "#E6E8F0",
-  fill: "#F0F1F7",
-  blue: "#2F5CF6",
-  blueDark: "#1E3FC4",
-  green: "#16A34A",
-  red: "#E11D48",
-  orange: "#D97706",
-  purple: "#7C3AED",
-  teal: "#0D9488",
-  indigo: "#4F46E5",
-  blueTint: "rgba(47,92,246,0.10)",
-  greenTint: "rgba(22,163,74,0.12)",
-  redTint: "rgba(225,29,72,0.10)",
-  orangeTint: "rgba(217,119,6,0.12)",
-  purpleTint: "rgba(124,58,237,0.12)",
-  tealTint: "rgba(13,148,136,0.12)",
-  brandGradient: "linear-gradient(135deg, #2F5CF6 0%, #4F46E5 100%)",
+  bg: "oklch(97.3% 0.006 80)",
+  bgElevated: "oklch(99% 0.003 80)",
+  card: "oklch(99% 0.003 80)",
+  ink: "oklch(21% 0.02 260)",
+  inkSoft: "oklch(46% 0.02 260)",
+  inkFaint: "oklch(65% 0.014 260)",
+  separator: "oklch(89% 0.01 80)",
+  fill: "oklch(94% 0.006 80)",
+  blue: "oklch(55% 0.15 155)",
+  blueDark: "oklch(45% 0.14 155)",
+  green: "oklch(55% 0.15 155)",
+  red: "oklch(53% 0.18 25)",
+  orange: "oklch(60% 0.15 55)",
+  purple: "oklch(52% 0.11 300)",
+  teal: "oklch(52% 0.09 200)",
+  indigo: "oklch(52% 0.11 300)",
+  blueTint: "oklch(55% 0.15 155 / 0.10)",
+  greenTint: "oklch(55% 0.15 155 / 0.10)",
+  redTint: "oklch(53% 0.18 25 / 0.10)",
+  orangeTint: "oklch(60% 0.15 55 / 0.10)",
+  purpleTint: "oklch(52% 0.11 300 / 0.10)",
+  tealTint: "oklch(52% 0.09 200 / 0.10)",
+  sidebar: "oklch(19% 0.02 260)",
+  sidebarActive: "oklch(30% 0.04 155)",
+  sidebarBorder: "oklch(28% 0.02 260)",
+  sidebarText: "oklch(80% 0.012 260)",
+  sidebarTextMuted: "oklch(60% 0.016 260)",
 };
 
 const sysFont =
-  "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const headFont = "'Space Grotesk', 'Manrope', -apple-system, sans-serif";
 
 const GlobalStyle = () => (
   <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
     html, body, #root { margin: 0; padding: 0; }
     .cc-root, .cc-root * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     .cc-root { font-family: ${sysFont}; }
     .cc-root input, .cc-root select, .cc-root textarea, .cc-root button { font-family: ${sysFont}; }
+    .cc-root input:focus, .cc-root select:focus, .cc-root textarea:focus { outline: none; border-color: ${T.blue} !important; box-shadow: 0 0 0 3px ${T.blueTint}; }
     .cc-root ::-webkit-scrollbar { width: 6px; height: 6px; }
     .cc-root ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
     .cc-tap { transition: transform .12s ease, opacity .12s ease; }
@@ -434,15 +441,14 @@ function fileSizeLabel(bytes) {
 const LogoMark = ({ size = 34, radius = 10 }) => (
   <div style={{
     width: size, height: size, borderRadius: radius, flexShrink: 0,
-    background: T.brandGradient, display: "flex", alignItems: "center", justifyContent: "center",
-    boxShadow: "0 2px 6px rgba(47,92,246,0.35)",
+    background: T.blue, display: "flex", alignItems: "center", justifyContent: "center",
   }}>
     <GraduationCap size={size * 0.58} color="#fff" strokeWidth={2.2} />
   </div>
 );
 
 const Card = ({ children, style, className, ...rest }) => (
-  <div className={["cc-card", className].filter(Boolean).join(" ")} style={{ background: T.card, borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(17,24,39,0.06), 0 1px 2px rgba(17,24,39,0.04)", border: "1px solid rgba(17,24,39,0.04)", ...style }} {...rest}>
+  <div className={["cc-card", className].filter(Boolean).join(" ")} style={{ background: T.card, borderRadius: 10, overflow: "hidden", border: `1px solid ${T.separator}`, ...style }} {...rest}>
     {children}
   </div>
 );
@@ -459,30 +465,35 @@ const Row = ({ children, onClick, last, style }) => (
 
 const Badge = ({ children, tone = "neutral" }) => {
   const map = {
-    neutral: { bg: T.fill, fg: T.inkSoft },
-    green: { bg: T.greenTint, fg: T.green },
-    orange: { bg: T.orangeTint, fg: T.orange },
-    red: { bg: T.redTint, fg: T.red },
-    blue: { bg: T.blueTint, fg: T.blue },
-    purple: { bg: T.purpleTint, fg: T.purple },
-    teal: { bg: T.tealTint, fg: T.teal },
+    neutral: { dot: T.inkFaint, fg: T.inkSoft },
+    green: { dot: T.green, fg: T.ink },
+    orange: { dot: T.orange, fg: T.orange },
+    red: { dot: T.red, fg: T.red },
+    blue: { dot: T.blue, fg: T.ink },
+    purple: { dot: T.purple, fg: T.purple },
+    teal: { dot: T.teal, fg: T.teal },
   };
   const c = map[tone] || map.neutral;
-  return <span style={{ background: c.bg, color: c.fg, fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 100, whiteSpace: "nowrap", lineHeight: 1.5, border: `1px solid ${c.fg}26` }}>{children}</span>;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: c.fg, fontSize: 12, fontWeight: 600, padding: "3px 9px", borderRadius: 6, whiteSpace: "nowrap", lineHeight: 1.5, border: `1px solid ${T.separator}` }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />
+      {children}
+    </span>
+  );
 };
 
 const Btn = ({ children, onClick, kind = "filled", tone = "blue", size = "md", style, disabled, type = "button", href, ...rest }) => {
   const color = T[tone] || T.blue;
   const base = {
-    filled: { background: disabled ? "#C7C7CC" : (tone === "blue" ? T.brandGradient : color), color: "#fff", border: "none" },
-    tinted: { background: disabled ? "#EBEBF0" : (tone === "red" ? T.redTint : T.blueTint), color: disabled ? T.inkFaint : color, border: "none" },
+    filled: { background: disabled ? T.fill : color, color: disabled ? T.inkFaint : "#fff", border: "none" },
+    tinted: { background: disabled ? T.fill : T.card, color: disabled ? T.inkFaint : (tone === "red" ? T.red : T.ink), border: `1px solid ${T.separator}` },
     text: { background: "transparent", color: disabled ? T.inkFaint : color, border: "none", padding: "6px 4px" },
     outline: { background: "#fff", color, border: `1px solid ${T.separator}` },
   };
   const sizes = { sm: { fontSize: 13, padding: "6px 12px" }, md: { fontSize: 15, padding: "10px 16px" } };
   const commonStyle = {
     ...base[kind], ...sizes[size], display: "inline-flex", alignItems: "center", gap: 6,
-    fontWeight: 600, borderRadius: kind === "text" ? 0 : 100, cursor: disabled ? "default" : "pointer", textDecoration: "none", ...style,
+    fontWeight: 600, borderRadius: kind === "text" ? 0 : 8, cursor: disabled ? "default" : "pointer", textDecoration: "none", ...style,
   };
   // Enlace externo real (abre en pestaña nueva sin reemplazar la app) en vez de window.open, que algunos navegadores navegan en la misma pestaña.
   if (href && !disabled) {
@@ -509,21 +520,21 @@ const IconBtn = ({ icon: Icon, onClick, tone = "inkSoft", size = 30 }) => (
 );
 
 const SegmentedControl = ({ options, value, onChange }) => (
-  <div style={{ display: "inline-flex", background: "#E9E9EE", borderRadius: 9, padding: 2, gap: 2 }}>
+  <div style={{ display: "inline-flex", background: T.fill, borderRadius: 8, padding: 2, gap: 2 }}>
     {options.map((opt) => {
       const active = opt.value === value;
       return (
         <button key={opt.value} onClick={() => onChange(opt.value)} className="cc-tap" style={{
-          border: "none", cursor: "pointer", padding: "6px 14px", borderRadius: 7, fontSize: 13, fontWeight: 600,
-          background: active ? "#fff" : "transparent", color: active ? T.ink : T.inkSoft,
-          boxShadow: active ? "0 1px 2px rgba(0,0,0,0.12)" : "none", transition: "all .15s",
+          border: "none", cursor: "pointer", padding: "6px 14px", borderRadius: 6, fontSize: 13, fontWeight: 600,
+          background: active ? T.card : "transparent", color: active ? T.ink : T.inkSoft,
+          boxShadow: active ? `0 1px 2px rgba(0,0,0,0.08)` : "none", transition: "all .15s",
         }}>{opt.label}</button>
       );
     })}
   </div>
 );
 
-const inputStyle = { border: "none", borderRadius: 10, padding: "11px 12px", fontSize: 15, color: T.ink, background: T.fill, outline: "none", width: "100%" };
+const inputStyle = { border: `1px solid ${T.separator}`, borderRadius: 8, padding: "10px 12px", fontSize: 15, color: T.ink, background: T.card, outline: "none", width: "100%" };
 
 const Field = ({ label, children }) => (
   <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
@@ -586,7 +597,7 @@ const ScreenHeader = ({ title, subtitle, action, avatar }) => (
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
         {avatar}
         <div style={{ minWidth: 0 }}>
-          <h1 style={{ fontSize: "clamp(22px, 6vw, 30px)", fontWeight: 800, letterSpacing: -0.4, margin: 0, color: T.ink }}>{title}</h1>
+          <h1 style={{ fontFamily: headFont, fontSize: "clamp(22px, 6vw, 30px)", fontWeight: 700, letterSpacing: -0.3, margin: 0, color: T.ink }}>{title}</h1>
           {subtitle && <div style={{ color: T.inkSoft, fontSize: 14, marginTop: 3 }}>{subtitle}</div>}
         </div>
       </div>
@@ -622,29 +633,49 @@ function Login() {
   return (
     <div className="cc-root" style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <GlobalStyle />
-      <Card style={{ width: 380, maxWidth: "100%", padding: 28 }}>
-        <LogoMark size={46} radius={13} />
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "16px 0 0", color: T.ink }}>CoordinadorPro</h1>
-        <div style={{ fontSize: 13.5, color: T.inkSoft, marginTop: 4, marginBottom: 22 }}>Secundaria Técnica No. 84 · 2026–2027</div>
+      <div style={{ width: 880, maxWidth: "100%", minHeight: 520, display: "flex", flexWrap: "wrap", borderRadius: 14, overflow: "hidden", border: `1px solid ${T.separator}`, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
 
-        <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <Field label="Correo institucional">
-            <input type="email" required autoComplete="username" style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu.nombre@tudominio.edu.mx" />
-          </Field>
-          <Field label="Contraseña">
-            <input type="password" required autoComplete="current-password" style={inputStyle} value={password} onChange={(e) => setPassword(e.target.value)} />
-          </Field>
-          {error && <div style={{ fontSize: 12.5, color: T.red }}>{error}</div>}
-          {info && <div style={{ fontSize: 12.5, color: T.green }}>{info}</div>}
-          <Btn type="submit" disabled={loading} style={{ justifyContent: "center", marginTop: 6 }}>{loading ? "Entrando…" : "Entrar"}</Btn>
-          <button type="button" onClick={handleForgot} style={{ background: "none", border: "none", color: T.blue, fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: "4px 0" }}>
-            ¿Olvidaste tu contraseña?
-          </button>
-        </form>
-        <div style={{ fontSize: 11.5, color: T.inkFaint, marginTop: 18, textAlign: "center" }}>
-          El acceso es solo por invitación. Si no tienes cuenta, pídele a tu coordinador que te invite.
+        <div style={{
+          flex: "1 1 340px", minWidth: 300, background: T.sidebar, position: "relative", overflow: "hidden",
+          display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 40,
+          backgroundImage: `repeating-linear-gradient(115deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 34px)`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <LogoMark size={30} radius={8} />
+            <span style={{ fontFamily: headFont, fontSize: 17, fontWeight: 600, color: "#fff" }}>CoordinadorPro</span>
+          </div>
+          <div>
+            <div style={{ fontFamily: headFont, fontSize: 28, fontWeight: 600, color: "#fff", lineHeight: 1.3, maxWidth: 300 }}>Coordinación académica, en un solo lugar.</div>
+            <div style={{ fontSize: 13.5, color: T.sidebarTextMuted, marginTop: 14, maxWidth: 280, lineHeight: 1.6 }}>Visitas, observación de clase, planeaciones y expedientes docentes de la Secundaria Técnica No. 84.</div>
+          </div>
+          <div style={{ fontSize: 12, color: T.sidebarTextMuted }}>Ciclo escolar 2026–2027</div>
         </div>
-      </Card>
+
+        <div style={{ flex: "1 1 340px", minWidth: 300, background: T.card, display: "flex", flexDirection: "column", justifyContent: "center", padding: 48 }}>
+          <div style={{ maxWidth: 320, width: "100%" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: T.blue, marginBottom: 8 }}>BIENVENIDO DE VUELTA</div>
+            <h1 style={{ fontFamily: headFont, fontSize: 25, fontWeight: 600, color: T.ink, margin: "0 0 28px" }}>Inicia sesión</h1>
+
+            <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <Field label="Correo institucional">
+                <input type="email" required autoComplete="username" style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu.nombre@tudominio.edu.mx" />
+              </Field>
+              <Field label="Contraseña">
+                <input type="password" required autoComplete="current-password" style={inputStyle} value={password} onChange={(e) => setPassword(e.target.value)} />
+              </Field>
+              {error && <div style={{ fontSize: 12.5, color: T.red }}>{error}</div>}
+              {info && <div style={{ fontSize: 12.5, color: T.green }}>{info}</div>}
+              <Btn type="submit" disabled={loading} style={{ justifyContent: "center", marginTop: 6 }}>{loading ? "Entrando…" : "Entrar"}</Btn>
+              <button type="button" onClick={handleForgot} style={{ background: "none", border: "none", color: T.inkSoft, fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: "4px 0", textAlign: "center" }}>
+                ¿Olvidaste tu contraseña?
+              </button>
+            </form>
+            <div style={{ fontSize: 11.5, color: T.inkFaint, marginTop: 28, textAlign: "center" }}>
+              El acceso es solo por invitación. Si no tienes cuenta, pídele a tu coordinador que te invite.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -676,7 +707,7 @@ function SetNewPassword({ onDone, invite }) {
         <div style={{ width: 46, height: 46, borderRadius: 12, background: T.blueTint, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
           <Lock size={22} color={T.blue} />
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: T.ink }}>{invite ? "Crea tu contraseña" : "Restablece tu contraseña"}</h1>
+        <h1 style={{ fontFamily: headFont, fontSize: 21, fontWeight: 600, margin: 0, color: T.ink }}>{invite ? "Crea tu contraseña" : "Restablece tu contraseña"}</h1>
         <div style={{ fontSize: 13.5, color: T.inkSoft, marginTop: 4, marginBottom: 22 }}>
           {invite ? "Es la primera vez que entras. Elige una contraseña para tu cuenta." : "Elige una nueva contraseña para tu cuenta."}
         </div>
@@ -700,7 +731,7 @@ function InviteError() {
     <div className="cc-root" style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <GlobalStyle />
       <Card style={{ width: 380, maxWidth: "100%", padding: 28, textAlign: "center" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: T.ink }}>El enlace ya no es válido</h1>
+        <h1 style={{ fontFamily: headFont, fontSize: 19, fontWeight: 600, margin: 0, color: T.ink }}>El enlace ya no es válido</h1>
         <div style={{ fontSize: 13.5, color: T.inkSoft, marginTop: 10, marginBottom: 20 }}>
           Los enlaces de invitación y recuperación son de un solo uso y expiran después de un tiempo. Pídele a tu coordinador que te reenvíe la invitación, o usa "¿Olvidaste tu contraseña?" en la pantalla de acceso.
         </div>
@@ -843,12 +874,12 @@ function AppShell({ session }) {
       <GlobalStyle />
 
       {!isMobile && (
-        <div className="no-print" style={{ width: 240, flexShrink: 0, borderRight: `0.5px solid ${T.separator}`, padding: "18px 12px", display: "flex", flexDirection: "column", gap: 16, background: T.bgElevated }}>
+        <div className="no-print" style={{ width: 240, flexShrink: 0, padding: "18px 12px", display: "flex", flexDirection: "column", gap: 16, background: T.sidebar }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 8px 12px" }}>
             <LogoMark />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 16, color: T.ink, letterSpacing: -0.2, lineHeight: 1.15 }}>CoordinadorPro</div>
-              <div style={{ fontSize: 11.5, color: T.inkFaint, marginTop: 1 }}>Sec. Técnica No. 84</div>
+              <div style={{ fontFamily: headFont, fontWeight: 600, fontSize: 15, color: "#fff", letterSpacing: -0.1, lineHeight: 1.15 }}>CoordinadorPro</div>
+              <div style={{ fontSize: 11.5, color: T.sidebarTextMuted, marginTop: 1 }}>Sec. Técnica No. 84</div>
             </div>
           </div>
           <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -857,19 +888,19 @@ function AppShell({ session }) {
               const isActive = active === n.id;
               return (
                 <button key={n.id} onClick={() => setActive(n.id)} className="cc-tap" style={{
-                  display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: "9px 10px", borderRadius: 9,
-                  border: "none", borderLeft: isActive ? `3px solid ${T.blue}` : "3px solid transparent", cursor: "pointer", fontSize: 14, fontWeight: isActive ? 700 : 500,
-                  color: isActive ? T.blue : T.ink, background: isActive ? T.blueTint : "transparent",
+                  display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: "9px 10px", borderRadius: 8,
+                  border: "none", cursor: "pointer", fontSize: 14, fontWeight: isActive ? 600 : 500,
+                  color: isActive ? "#fff" : T.sidebarTextMuted, background: isActive ? T.sidebarActive : "transparent",
                 }}>
-                  <Icon size={18} strokeWidth={2.1} />
+                  <Icon size={18} strokeWidth={2.1} color={isActive ? T.blue : "currentColor"} />
                   {n.label}
                 </button>
               );
             })}
           </nav>
-          <div style={{ marginTop: "auto", paddingTop: 12, borderTop: `0.5px solid ${T.separator}` }}>
-            <div style={{ fontSize: 11.5, color: T.inkFaint, padding: "0 10px", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.user.email}</div>
-            <button onClick={signOut} className="cc-tap" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", border: "none", background: "transparent", color: T.red, fontSize: 13, fontWeight: 600, cursor: "pointer", borderRadius: 8 }}>
+          <div style={{ marginTop: "auto", paddingTop: 12, borderTop: `1px solid ${T.sidebarBorder}` }}>
+            <div style={{ fontSize: 11.5, color: T.sidebarTextMuted, padding: "0 10px", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.user.email}</div>
+            <button onClick={signOut} className="cc-tap" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", border: "none", background: "transparent", color: "oklch(72% 0.15 25)", fontSize: 13, fontWeight: 600, cursor: "pointer", borderRadius: 8 }}>
               <LogOut size={15} /> Cerrar sesión
             </button>
           </div>
@@ -878,12 +909,12 @@ function AppShell({ session }) {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {isMobile && (
-          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: `0.5px solid ${T.separator}`, background: T.bgElevated }}>
+          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: T.sidebar }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
               <LogoMark size={28} radius={8} />
-              <div style={{ fontWeight: 800, fontSize: 15, color: T.ink }}>CoordinadorPro</div>
+              <div style={{ fontFamily: headFont, fontWeight: 600, fontSize: 15, color: "#fff" }}>CoordinadorPro</div>
             </div>
-            <button onClick={signOut} className="cc-tap" style={{ background: "none", border: "none", color: T.red, display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={signOut} className="cc-tap" style={{ background: "none", border: "none", color: "oklch(72% 0.15 25)", display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
               <LogOut size={14} /> Salir
             </button>
           </div>
@@ -919,11 +950,11 @@ function AppShell({ session }) {
                 return (
                   <button key={n.id} onClick={() => { setActive(n.id); setShowMoreMenu(false); }} className="cc-tap" style={{
                     width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", marginBottom: 2,
-                    border: "none", borderRadius: 12, cursor: "pointer", textAlign: "left",
-                    background: isActive ? T.blueTint : "transparent", color: isActive ? T.blue : T.ink,
-                    fontSize: 15, fontWeight: isActive ? 700 : 500,
+                    border: "none", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                    background: isActive ? T.fill : "transparent", color: T.ink,
+                    fontSize: 15, fontWeight: isActive ? 600 : 500,
                   }}>
-                    <Icon size={20} strokeWidth={2.1} />
+                    <Icon size={20} strokeWidth={2.1} color={isActive ? T.blue : T.inkSoft} />
                     {n.label}
                   </button>
                 );
@@ -1010,7 +1041,7 @@ function Dashboard({ teachers, visits, observations, evalPeriods, incidencias, c
               <div style={{ width: 34, height: 34, borderRadius: 10, background: T[`${c.tone}Tint`], display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                 <Icon size={17} color={T[c.tone]} strokeWidth={2.3} />
               </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: T.ink, letterSpacing: -0.5 }}>{c.value}</div>
+              <div style={{ fontFamily: headFont, fontSize: 26, fontWeight: 600, color: T.ink, letterSpacing: -0.3 }}>{c.value}</div>
               <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>{c.label}</div>
               {c.sub && <div style={{ fontSize: 11, color: T.inkFaint, marginTop: 2 }}>{c.sub}</div>}
             </Card>
@@ -1042,7 +1073,7 @@ function Dashboard({ teachers, visits, observations, evalPeriods, incidencias, c
             {nextEval ? (
               <div>
                 <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 3 }}>Periodo {nextEval.periodo}</div>
-                <div style={{ fontSize: 20, fontWeight: 800 }}>{fmtDate(nextEval.entrega)}</div>
+                <div style={{ fontFamily: headFont, fontSize: 20, fontWeight: 600 }}>{fmtDate(nextEval.entrega)}</div>
                 <div style={{ marginTop: 8 }}><Badge tone={nextEval.d <= 7 ? "red" : "orange"}>{nextEval.d === 0 ? "es hoy" : `en ${nextEval.d} días`}</Badge></div>
               </div>
             ) : <EmptyHint text="No hay entregas pendientes." />}
@@ -1123,12 +1154,12 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
                   <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <button onClick={() => toggleStatus(v.id)} className="cc-tap" title="Marcar pendiente/realizada" style={{
                       border: "none", cursor: "pointer", borderRadius: "10px 0 0 10px", padding: "8px 9px",
-                      background: v.status === "realizada" ? T.greenTint : T.fill, color: v.status === "realizada" ? "#248A3D" : T.inkSoft, display: "flex", alignItems: "center",
+                      background: v.status === "realizada" ? T.greenTint : T.fill, color: v.status === "realizada" ? T.blueDark : T.inkSoft, display: "flex", alignItems: "center",
                     }}>{v.status === "realizada" ? <Check size={13} /> : <Clock size={13} />}</button>
                     <button onClick={() => goToObservation(teacher.id)} className="cc-tap" title="Ir a observación de este docente" style={{
                       border: "none", cursor: "pointer", borderRadius: "0 10px 10px 0", padding: "8px 12px 8px 8px",
-                      background: v.status === "realizada" ? T.greenTint : T.fill, color: v.status === "realizada" ? "#248A3D" : T.inkSoft,
-                      fontSize: 12, fontWeight: 700, borderLeft: `1px solid ${v.status === "realizada" ? "rgba(52,199,89,0.25)" : T.separator}`,
+                      background: v.status === "realizada" ? T.greenTint : T.fill, color: v.status === "realizada" ? T.blueDark : T.inkSoft,
+                      fontSize: 12, fontWeight: 700, borderLeft: `1px solid ${v.status === "realizada" ? "oklch(55% 0.15 155 / 0.3)" : T.separator}`,
                     }}>{v.month} · {v.semana}</button>
                   </div>
                 ))}
@@ -1156,15 +1187,15 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
                     return (
                       <td key={m} style={{ ...tdStyle, textAlign: "center" }}>
                         {v ? (
-                          <div style={{ display: "inline-flex", alignItems: "center", borderRadius: 100, overflow: "hidden" }}>
+                          <div style={{ display: "inline-flex", alignItems: "center", borderRadius: 6, overflow: "hidden" }}>
                             <button onClick={() => toggleStatus(v.id)} className="cc-tap" title="Marcar pendiente/realizada" style={{
                               border: "none", cursor: "pointer", padding: "5px 7px", background: v.status === "realizada" ? T.greenTint : T.fill,
-                              color: v.status === "realizada" ? "#248A3D" : T.inkSoft, display: "flex", alignItems: "center",
+                              color: v.status === "realizada" ? T.blueDark : T.inkSoft, display: "flex", alignItems: "center",
                             }}>{v.status === "realizada" ? <Check size={12} /> : <Clock size={12} />}</button>
                             <button onClick={() => goToObservation(teacher.id)} className="cc-tap" title="Ir a observación de este docente" style={{
                               border: "none", cursor: "pointer", padding: "5px 10px 5px 6px", background: v.status === "realizada" ? T.greenTint : T.fill,
-                              color: v.status === "realizada" ? "#248A3D" : T.inkSoft, fontSize: 11.5, fontWeight: 700,
-                              borderLeft: `1px solid ${v.status === "realizada" ? "rgba(52,199,89,0.25)" : T.separator}`,
+                              color: v.status === "realizada" ? T.blueDark : T.inkSoft, fontSize: 11.5, fontWeight: 700,
+                              borderLeft: `1px solid ${v.status === "realizada" ? "oklch(55% 0.15 155 / 0.3)" : T.separator}`,
                             }}>{v.semana}</button>
                           </div>
                         ) : <span style={{ color: T.inkFaint }}>—</span>}
@@ -1641,7 +1672,7 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
             <Card key={p.id} style={{ padding: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 10 }}>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: 18 }}>Periodo {p.periodo}</div>
+                  <div style={{ fontFamily: headFont, fontWeight: 600, fontSize: 18 }}>Periodo {p.periodo}</div>
                   <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 2 }}>{fmtDate(p.inicia)} — {fmtDate(p.termina)}</div>
                 </div>
                 <Badge tone={s.tone}>{s.text}</Badge>
@@ -1944,10 +1975,10 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{visitsDone}/{tVisits.length}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Visitas realizadas</div></Card>
-        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{tObs.length}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Observaciones</div></Card>
-        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800 }}>{avg ?? "—"}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Promedio</div></Card>
-        <Card style={{ padding: 14 }}><div style={{ fontSize: 22, fontWeight: 800, color: incAbiertas ? T.red : T.ink }}>{incAbiertas}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Incidencias abiertas</div></Card>
+        <Card style={{ padding: 14 }}><div style={{ fontFamily: headFont, fontSize: 22, fontWeight: 600 }}>{visitsDone}/{tVisits.length}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Visitas realizadas</div></Card>
+        <Card style={{ padding: 14 }}><div style={{ fontFamily: headFont, fontSize: 22, fontWeight: 600 }}>{tObs.length}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Observaciones</div></Card>
+        <Card style={{ padding: 14 }}><div style={{ fontFamily: headFont, fontSize: 22, fontWeight: 600 }}>{avg ?? "—"}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Promedio</div></Card>
+        <Card style={{ padding: 14 }}><div style={{ fontFamily: headFont, fontSize: 22, fontWeight: 600, color: incAbiertas ? T.red : T.ink }}>{incAbiertas}</div><div style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>Incidencias abiertas</div></Card>
       </div>
 
       {teacher.notas && (
@@ -2130,8 +2161,8 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
 /* ============================== INCIDENCIAS MODULE ============================== */
 const ChipToggle = ({ label, active, onClick }) => (
   <button type="button" onClick={onClick} className="cc-tap" style={{
-    border: "none", cursor: "pointer", borderRadius: 100, padding: "6px 12px", fontSize: 12.5, fontWeight: 600,
-    background: active ? T.blue : T.fill, color: active ? "#fff" : T.inkSoft,
+    border: `1px solid ${active ? T.blue : T.separator}`, cursor: "pointer", borderRadius: 6, padding: "6px 12px", fontSize: 12.5, fontWeight: 600,
+    background: active ? T.blue : T.card, color: active ? "#fff" : T.inkSoft,
   }}>{label}</button>
 );
 
