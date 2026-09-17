@@ -3,7 +3,7 @@ import {
   CalendarCheck, ClipboardCheck, CalendarClock, Users, AlertTriangle,
   BookOpenCheck, LayoutGrid, Plus, X, Check, ChevronRight, Printer,
   Search, Pencil, Trash2, Clock, ChevronLeft, Image as ImageIcon, Paperclip,
-  FileText, LogOut, Lock, MoreHorizontal, GraduationCap, Calendar, Upload, Download
+  FileText, LogOut, Lock, MoreHorizontal, GraduationCap, Calendar, Upload, Download, MessageCircle, Mail
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -252,6 +252,25 @@ function evaluarPlaneacion(tipo, evaluacion) {
   const completada = !metodologiaFalta && items.length > 0 && items.every((it) => it.nivel === "completo");
   const orientaciones = items.filter((it) => it.nivel !== "completo").map((it) => ({ ...it }));
   return { items, completada, orientaciones, metodologiaFalta };
+}
+
+function toWhatsAppNumber(telefono) {
+  const digits = (telefono || "").replace(/\D/g, "");
+  if (!digits) return null;
+  return digits.length === 10 ? `52${digits}` : digits;
+}
+const NIVEL_ICONO = { completo: "✅", parcial: "⚠️", pendiente: "❌" };
+function buildPlaneacionMensaje(teacherName, tipo, evaluacion, result) {
+  const lineas = [`Retroalimentación de planeación — ${tipo}`, `Docente: ${teacherName}`, ""];
+  if (evaluacion.metodologia) lineas.push(`Metodología: ${METODOLOGIAS_NEM[evaluacion.metodologia].nombre}`, "");
+  lineas.push(result.completada ? "Estado: Completa ✅" : "Estado: Con observaciones ⚠️", "", "Lista de cotejo:");
+  result.items.forEach((it) => lineas.push(`${NIVEL_ICONO[it.nivel]} ${it.nombre}`));
+  if (result.orientaciones.length) {
+    lineas.push("", "Orientaciones para mejorar:");
+    result.orientaciones.forEach((o) => lineas.push(`• ${o.nombre}${o.desc ? `: ${o.desc}` : ""}`));
+  }
+  lineas.push("", "— Coordinación Académica, Secundaria Técnica No. 84");
+  return lineas.join("\n");
 }
 
 const GRADOS = ["1°", "2°", "3°"];
@@ -539,12 +558,12 @@ const Btn = ({ children, onClick, kind = "filled", tone = "blue", size = "md", s
   );
 };
 
-const IconBtn = ({ icon: Icon, onClick, tone = "inkSoft", size = 30 }) => (
+const IconBtn = ({ icon: Icon, onClick, tone = "inkSoft", size = 32 }) => (
   <button className="cc-tap" onClick={onClick} style={{
     width: size, height: size, borderRadius: "50%", border: "none", background: T.fill,
     display: "flex", alignItems: "center", justifyContent: "center", color: T[tone] || T.inkSoft, cursor: "pointer", flexShrink: 0,
   }}>
-    <Icon size={size * 0.5} strokeWidth={2.3} />
+    <Icon size={size * 0.6} strokeWidth={2.3} />
   </button>
 );
 
@@ -1016,8 +1035,8 @@ function AppShell({ session }) {
                 background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
                 alignItems: "center", gap: 2, padding: "4px 6px", color: isActive ? T.blue : T.inkFaint, flex: 1, minWidth: 0,
               }}>
-                <Icon size={22} strokeWidth={isActive ? 2.4 : 2} />
-                <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, whiteSpace: "nowrap" }}>{n.label}</span>
+                <Icon size={26} strokeWidth={isActive ? 2.4 : 2} />
+                <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, whiteSpace: "nowrap" }}>{n.label}</span>
               </button>
             );
           })}
@@ -1025,8 +1044,8 @@ function AppShell({ session }) {
             background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column",
             alignItems: "center", gap: 2, padding: "4px 6px", color: isInMoreSection ? T.blue : T.inkFaint, flex: 1, minWidth: 0,
           }}>
-            <MoreHorizontal size={22} strokeWidth={isInMoreSection ? 2.4 : 2} />
-            <span style={{ fontSize: 10, fontWeight: isInMoreSection ? 700 : 500, whiteSpace: "nowrap" }}>Más</span>
+            <MoreHorizontal size={26} strokeWidth={isInMoreSection ? 2.4 : 2} />
+            <span style={{ fontSize: 11, fontWeight: isInMoreSection ? 700 : 500, whiteSpace: "nowrap" }}>Más</span>
           </button>
         </div>
       )}
@@ -1076,8 +1095,8 @@ function Dashboard({ teachers, visits, observations, evalPeriods, incidencias, c
           const Icon = c.icon;
           return (
             <Card key={c.label} onClick={c.onClick} className="cc-tap" style={{ padding: 16, cursor: "pointer" }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: T[`${c.tone}Tint`], display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-                <Icon size={17} color={T[c.tone]} strokeWidth={2.3} />
+              <div style={{ width: 40, height: 40, borderRadius: 11, background: T[`${c.tone}Tint`], display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                <Icon size={21} color={T[c.tone]} strokeWidth={2.3} />
               </div>
               <div style={{ fontFamily: headFont, fontSize: 26, fontWeight: 600, color: T.ink, letterSpacing: -0.3 }}>{c.value}</div>
               <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>{c.label}</div>
@@ -1566,6 +1585,23 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
                     </div>
                   </Card>
                 )}
+                {(() => {
+                  const teacher = teachers.find((t) => t.id === editing.teacherId);
+                  const mensaje = buildPlaneacionMensaje(teacher?.name || "—", editing.tipo, ev, result);
+                  const waNumber = toWhatsAppNumber(teacher?.telefono);
+                  const waUrl = `https://wa.me/${waNumber || ""}?text=${encodeURIComponent(mensaje)}`;
+                  const mailUrl = `mailto:${teacher?.correo || ""}?subject=${encodeURIComponent(`Retroalimentación de planeación — ${editing.tipo}`)}&body=${encodeURIComponent(mensaje)}`;
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 11.5, color: T.inkFaint, marginBottom: 6 }}>Comparte esta revisión con el docente para que lleve su propio seguimiento:</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Btn kind="tinted" size="sm" href={waUrl}><MessageCircle size={13} /> Compartir por WhatsApp</Btn>
+                        <Btn kind="tinted" size="sm" href={mailUrl}><Mail size={13} /> Compartir por correo</Btn>
+                      </div>
+                      {!waNumber && <div style={{ fontSize: 11, color: T.inkFaint, marginTop: 6 }}>Este docente no tiene teléfono guardado — podrás elegir el contacto manualmente en WhatsApp.</div>}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -1677,8 +1713,8 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
         </div>
 
         <label onClick={() => setDraft({ ...draft, sorpresa: !draft.sorpresa })} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, cursor: "pointer" }}>
-          <span style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: draft.sorpresa ? T.orange : T.fill, border: draft.sorpresa ? "none" : `1.5px solid ${T.separator}` }}>
-            {draft.sorpresa && <Check size={13} color="#fff" strokeWidth={3} />}
+          <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: draft.sorpresa ? T.orange : T.fill, border: draft.sorpresa ? "none" : `1.5px solid ${T.separator}` }}>
+            {draft.sorpresa && <Check size={15} color="#fff" strokeWidth={3} />}
           </span>
           <span>Fue una visita sorpresa (no programada en el calendario)</span>
         </label>
@@ -1849,8 +1885,8 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {p.tareas.map((t) => (
                   <label key={t.id} onClick={() => toggleTask(p.id, t.id)} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, cursor: "pointer", padding: "7px 2px" }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: t.hecho ? T.green : T.fill, border: t.hecho ? "none" : `1.5px solid ${T.separator}` }}>
-                      {t.hecho && <Check size={13} color="#fff" strokeWidth={3} />}
+                    <span style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: t.hecho ? T.green : T.fill, border: t.hecho ? "none" : `1.5px solid ${T.separator}` }}>
+                      {t.hecho && <Check size={15} color="#fff" strokeWidth={3} />}
                     </span>
                     <span style={{ textDecoration: t.hecho ? "line-through" : "none", color: t.hecho ? T.inkFaint : T.ink }}>{t.texto}</span>
                   </label>
