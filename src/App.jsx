@@ -3,7 +3,7 @@ import {
   CalendarCheck, ClipboardCheck, CalendarClock, Users, AlertTriangle,
   BookOpenCheck, LayoutGrid, Plus, X, Check, ChevronRight, Printer,
   Search, Pencil, Trash2, Clock, ChevronLeft, Image as ImageIcon, Paperclip,
-  FileText, LogOut, Lock, MoreHorizontal, GraduationCap
+  FileText, LogOut, Lock, MoreHorizontal, GraduationCap, Calendar, Upload, Download
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -381,6 +381,35 @@ function daysUntil(iso) {
   return Math.round((target - today) / 86400000);
 }
 function uid(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// Parser de CSV simple pero correcto: soporta campos entre comillas con comas y comillas escapadas ("").
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  const pushField = () => { row.push(field); field = ""; };
+  const pushRow = () => { pushField(); rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; } }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") pushField();
+    else if (c === "\n") pushRow();
+    else if (c === "\r") { /* ignore, \n lo maneja */ }
+    else field += c;
+  }
+  if (field !== "" || row.length) pushRow();
+  return rows.filter((r) => r.some((f) => f.trim() !== ""));
+}
+function downloadTextFile(filename, content, mime = "text/csv;charset=utf-8;") {
+  const blob = new Blob(["﻿" + content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // Completa los campos del expediente que los registros antiguos no tenían, sin mutar lo guardado.
 function normalizeTeacher(t) {
@@ -848,6 +877,7 @@ function AppShell({ session }) {
 
   const nav = [
     { id: "dashboard", label: "Inicio", icon: LayoutGrid },
+    { id: "calendario", label: "Calendario", icon: Calendar },
     { id: "visitas", label: "Visitas", icon: CalendarCheck },
     { id: "observacion", label: "Observación", icon: ClipboardCheck },
     { id: "evaluaciones", label: "Evaluaciones", icon: CalendarClock },
@@ -935,6 +965,7 @@ function AppShell({ session }) {
           {active === "docentes" && <DocentesModule {...moduleProps} />}
           {active === "incidencias" && <IncidenciasModule {...moduleProps} />}
           {active === "cte" && <CteModule {...moduleProps} />}
+          {active === "calendario" && <CalendarioModule {...moduleProps} />}
         </div>
       </div>
 
@@ -1091,6 +1122,126 @@ function Dashboard({ teachers, visits, observations, evalPeriods, incidencias, c
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ============================== CALENDARIO MODULE ============================== */
+const CAL_LEYENDA = [
+  { type: "cte", tone: "purple", label: "CTE" },
+  { type: "evaluacion", tone: "orange", label: "Evaluaciones" },
+  { type: "visita", tone: "green", label: "Visitas" },
+  { type: "incidencia", tone: "red", label: "Incidencias" },
+];
+const CAL_DIAS = ["D", "L", "M", "M", "J", "V", "S"];
+const CAL_MODULO_POR_TIPO = { cte: "cte", evaluacion: "evaluaciones", visita: "visitas", incidencia: "incidencias" };
+
+function CalendarioModule({ visits, cte, evalPeriods, incidencias, teacherName, setActive, isMobile }) {
+  const today = todayIso();
+  const [cursor, setCursor] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
+  const [selectedDate, setSelectedDate] = useState(today);
+
+  const events = useMemo(() => {
+    const map = {};
+    const add = (date, ev) => { if (!date) return; (map[date] ||= []).push(ev); };
+    cte.forEach((s) => add(s.fecha, { type: "cte", tone: "purple", label: s.tema || "Sesión de CTE" }));
+    evalPeriods.forEach((p) => {
+      add(p.entrega, { type: "evaluacion", tone: "orange", label: `Entrega Periodo ${p.periodo} a coordinación` });
+      add(p.evalInicio, { type: "evaluacion", tone: "orange", label: `Inicia evaluación · Periodo ${p.periodo}` });
+      add(p.evalFin, { type: "evaluacion", tone: "orange", label: `Termina evaluación · Periodo ${p.periodo}` });
+    });
+    visits.filter((v) => v.fecha).forEach((v) => add(v.fecha, { type: "visita", tone: "green", label: `Visita a ${teacherName(v.teacherId)}${v.tipo === "sorpresa" ? " (sorpresa)" : ""}` }));
+    incidencias.map(normalizeIncidencia).forEach((i) => add(i.fecha, { type: "incidencia", tone: "red", label: i.descripcion ? i.descripcion.slice(0, 70) : "Incidencia registrada" }));
+    return map;
+  }, [cte, evalPeriods, visits, incidencias, teacherName]);
+
+  const { year, month } = cursor;
+  const monthLabel = new Date(year, month, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const isoOf = (d) => `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  const shiftMonth = (delta) => setCursor((c) => {
+    const nm = c.month + delta;
+    if (nm < 0) return { year: c.year - 1, month: 11 };
+    if (nm > 11) return { year: c.year + 1, month: 0 };
+    return { year: c.year, month: nm };
+  });
+  const goToday = () => { const d = new Date(); setCursor({ year: d.getFullYear(), month: d.getMonth() }); setSelectedDate(today); };
+
+  const selectedEvents = events[selectedDate] || [];
+
+  return (
+    <div>
+      <ScreenHeader title="Calendario" subtitle="Visitas, CTE, evaluaciones e incidencias en un solo lugar" />
+
+      <div className="no-print" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+        {CAL_LEYENDA.map((l) => (
+          <div key={l.type} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: T.inkSoft }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: T[l.tone] }} />
+            {l.label}
+          </div>
+        ))}
+      </div>
+
+      <Card style={{ padding: 16, marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ fontFamily: headFont, fontSize: 17, fontWeight: 600, textTransform: "capitalize" }}>{monthLabel}</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <IconBtn icon={ChevronLeft} size={28} onClick={() => shiftMonth(-1)} />
+            <Btn kind="tinted" size="sm" onClick={goToday}>Hoy</Btn>
+            <IconBtn icon={ChevronRight} size={28} onClick={() => shiftMonth(1)} />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+          {CAL_DIAS.map((d, idx) => <div key={idx} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: T.inkFaint, padding: "4px 0" }}>{d}</div>)}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {cells.map((d, idx) => {
+            if (!d) return <div key={idx} />;
+            const iso = isoOf(d);
+            const dayEvents = events[iso] || [];
+            const isToday = iso === today;
+            const isSelected = iso === selectedDate;
+            return (
+              <button key={idx} onClick={() => setSelectedDate(iso)} className="cc-tap" style={{
+                aspectRatio: "1", border: isSelected ? `1.5px solid ${T.blue}` : `1px solid ${isToday ? T.blue : "transparent"}`,
+                borderRadius: 8, background: isSelected ? T.blueTint : T.fill, cursor: "pointer",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, padding: 2,
+              }}>
+                <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: isToday ? 700 : 500, color: T.ink }}>{d}</span>
+                {dayEvents.length > 0 && (
+                  <div style={{ display: "flex", gap: 2 }}>
+                    {dayEvents.slice(0, 3).map((ev, i) => <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: T[ev.tone] }} />)}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card style={{ padding: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14.5, marginBottom: 10 }}>{fmtDate(selectedDate)}</div>
+        {selectedEvents.length === 0 ? (
+          <EmptyHint icon={Calendar} text="Sin eventos registrados este día." />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {selectedEvents.map((ev, idx) => (
+              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: T[ev.tone], flexShrink: 0 }} />
+                <div style={{ flex: 1, fontSize: 13.5 }}>{ev.label}</div>
+                <button className="no-print" onClick={() => setActive(CAL_MODULO_POR_TIPO[ev.type])} style={{ background: "none", border: "none", color: T.blue, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Ver →</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -1721,11 +1872,15 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
 }
 
 /* ============================== DOCENTES MODULE ============================== */
+const CSV_TEMPLATE = "Nombre,Disciplina,Telefono,Correo\nJuan Pérez López,Matemáticas,4491234567,juan.perez@sec84.edu.mx\n";
+
 function DocentesModule(props) {
   const { teachers, setTeachers, visits, setVisits, observations, setObservations, incidencias, setIncidencias, planeaciones, setPlaneaciones, isMobile } = props;
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [openId, setOpenId] = useState(null);
+  const [importRows, setImportRows] = useState(null);
+  const csvInputRef = useRef(null);
 
   const stats = (id) => {
     const tv = visits.filter((v) => v.teacherId === id);
@@ -1757,6 +1912,38 @@ function DocentesModule(props) {
     setIncidencias(incidencias.map((i) => normalizeIncidencia(i)).map((i) => ({ ...i, teacherIds: i.teacherIds.filter((x) => x !== id) })));
   };
 
+  const handleCsvPick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const text = await file.text();
+    const parsed = parseCsv(text);
+    const dataRows = parsed.slice(1); // primera fila = encabezado
+    const existingNames = new Set(teachers.map((t) => t.name.trim().toLowerCase()));
+    const seenInFile = new Set();
+    const rows = dataRows.map(([name = "", disciplina = "", telefono = "", correo = ""]) => {
+      const cleanName = name.trim();
+      const key = cleanName.toLowerCase();
+      let status = "nueva";
+      if (!cleanName) status = "invalida";
+      else if (existingNames.has(key) || seenInFile.has(key)) status = "duplicada";
+      if (status === "nueva") seenInFile.add(key);
+      return { name: cleanName, disciplina: disciplina.trim(), telefono: telefono.trim(), correo: correo.trim(), status };
+    });
+    setImportRows(rows);
+  };
+  const confirmImport = () => {
+    const nuevos = importRows.filter((r) => r.status === "nueva").map((r) => normalizeTeacher({
+      id: uid("t"), name: r.name, disciplina: r.disciplina, telefono: r.telefono, correo: r.correo, notas: "",
+    }));
+    if (nuevos.length) {
+      setTeachers([...teachers, ...nuevos]);
+      setVisits([...visits, ...nuevos.flatMap(visitsForTeacher)]);
+      setPlaneaciones([...planeaciones, ...nuevos.flatMap(planeacionesForTeacher)]);
+    }
+    setImportRows(null);
+  };
+
   const openTeacher = teachers.find((t) => t.id === openId);
   if (openTeacher) {
     return <TeacherExpediente {...props} teacher={openTeacher} onBack={() => setOpenId(null)} />;
@@ -1765,11 +1952,50 @@ function DocentesModule(props) {
   return (
     <div>
       <ScreenHeader title="Docentes" subtitle={`${teachers.length} registrados`}
-        action={<Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("t"), name: "", disciplina: "", telefono: "", correo: "", notas: "" })}><Plus size={14} /> Agregar</Btn>} />
-      <div className="no-print" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 8, background: T.card, borderRadius: 10, padding: "9px 12px" }}>
+        action={<div style={{ display: "flex", gap: 8 }}>
+          <Btn kind="tinted" size="sm" onClick={() => csvInputRef.current?.click()}><Upload size={14} /> Importar CSV</Btn>
+          <Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("t"), name: "", disciplina: "", telefono: "", correo: "", notas: "" })}><Plus size={14} /> Agregar</Btn>
+        </div>} />
+      <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={handleCsvPick} />
+      <div className="no-print" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, background: T.card, borderRadius: 10, padding: "9px 12px" }}>
         <Search size={15} color={T.inkFaint} />
         <input style={{ border: "none", outline: "none", fontSize: 15, background: "transparent", width: "100%" }} placeholder="Buscar por nombre o disciplina" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
+      <button className="no-print" onClick={() => downloadTextFile("plantilla-docentes.csv", CSV_TEMPLATE)} style={{ background: "none", border: "none", color: T.blue, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "2px 0 14px", display: "flex", alignItems: "center", gap: 4 }}>
+        <Download size={12} /> Descargar plantilla CSV
+      </button>
+
+      {importRows && (
+        <Sheet title="Importar docentes" onClose={() => setImportRows(null)} onSave={confirmImport}
+          saveLabel={`Importar ${importRows.filter((r) => r.status === "nueva").length}`}
+          saveDisabled={importRows.every((r) => r.status !== "nueva")} isMobile={isMobile}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Badge tone="green">{importRows.filter((r) => r.status === "nueva").length} nuevos</Badge>
+            <Badge tone="orange">{importRows.filter((r) => r.status === "duplicada").length} ya existen (se omiten)</Badge>
+            <Badge tone="red">{importRows.filter((r) => r.status === "invalida").length} sin nombre (se omiten)</Badge>
+          </div>
+          <Card className="cc-scrollx">
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 480 }}>
+              <thead><tr style={{ background: T.fill }}>
+                <th style={thStyle}>Nombre</th><th style={thStyle}>Disciplina</th><th style={thStyle}>Estatus</th>
+              </tr></thead>
+              <tbody>
+                {importRows.map((r, idx) => (
+                  <tr key={idx} style={{ borderTop: `0.5px solid ${T.separator}` }}>
+                    <td style={tdStyle}>{r.name || <span style={{ color: T.inkFaint }}>(sin nombre)</span>}</td>
+                    <td style={tdStyle}>{r.disciplina}</td>
+                    <td style={tdStyle}>
+                      {r.status === "nueva" && <Badge tone="green">Nueva</Badge>}
+                      {r.status === "duplicada" && <Badge tone="orange">Ya existe</Badge>}
+                      {r.status === "invalida" && <Badge tone="red">Inválida</Badge>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </Sheet>
+      )}
 
       {editing && (
         <Sheet title="Nuevo docente" onClose={() => setEditing(null)} onSave={save} saveLabel="Crear y abrir expediente" saveDisabled={!editing.name} isMobile={isMobile}>
