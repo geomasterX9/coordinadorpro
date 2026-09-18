@@ -71,7 +71,9 @@ const GlobalStyle = () => (
       .print-only-flex { display: flex !important; }
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-      .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; }
+      .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; padding: 10px !important; margin: 0 0 6px !important; }
+      .cc-row { padding: 6px 12px !important; }
+      .cc-screen-header { margin-bottom: 8px !important; }
       .cc-scrollx { overflow-x: visible !important; }
       .cc-scrollx table { min-width: 0 !important; width: 100% !important; font-size: 10.5px !important; }
       .cc-scrollx th, .cc-scrollx td { padding: 6px 4px !important; }
@@ -502,7 +504,7 @@ const Card = ({ children, style, className, ...rest }) => (
 );
 
 const Row = ({ children, onClick, last, style }) => (
-  <div className={onClick ? "cc-row-tap" : ""} onClick={onClick} style={{
+  <div className={["cc-row", onClick ? "cc-row-tap" : ""].filter(Boolean).join(" ")} onClick={onClick} style={{
     display: "flex", alignItems: "center", gap: 10, padding: "13px 16px",
     borderBottom: last ? "none" : `0.5px solid ${T.separator}`,
     cursor: onClick ? "pointer" : "default", transition: "background .1s", ...style,
@@ -599,17 +601,17 @@ const EmptyHint = ({ text, icon: Icon }) => (
 );
 
 const ReportLetterhead = ({ title }) => (
-  <div className="print-only" style={{ textAlign: "center", marginBottom: 18, paddingBottom: 12, borderBottom: "2px solid #1C1C1E" }}>
+  <div className="print-only" style={{ textAlign: "center", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid #1C1C1E" }}>
     <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.3 }}>SECUNDARIA TÉCNICA No. 84</div>
     <div style={{ fontSize: 12.5, color: "#555", marginTop: 3 }}>{title} · Ciclo escolar 2026–2027</div>
   </div>
 );
 
 const FirmasBlock = ({ roles = ["Docente", "Coordinador(a)", "Director(a)"] }) => (
-  <div className="print-only-flex" style={{ justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginTop: 50 }}>
+  <div className="print-only-flex" style={{ justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginTop: 22 }}>
     {roles.map((rol) => (
       <div key={rol} style={{ flex: 1, minWidth: 150, textAlign: "center" }}>
-        <div style={{ height: 46 }} />
+        <div style={{ height: 26 }} />
         <div style={{ borderTop: "1px solid #1C1C1E", paddingTop: 6, fontSize: 12, fontWeight: 600, color: "#1C1C1E" }}>
           Nombre y firma del {rol}
         </div>
@@ -640,7 +642,7 @@ const Sheet = ({ title, onClose, onSave, saveLabel = "Guardar", saveDisabled, ch
 );
 
 const ScreenHeader = ({ title, subtitle, action, avatar }) => (
-  <div style={{ marginBottom: 20 }}>
+  <div className="cc-screen-header" style={{ marginBottom: 20 }}>
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "10px 12px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
         {avatar}
