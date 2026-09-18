@@ -71,6 +71,7 @@ const GlobalStyle = () => (
       .print-only-flex { display: flex !important; }
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+      .cc-root { zoom: 0.75; }
       .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; padding: 10px !important; margin: 0 0 6px !important; }
       .cc-row { padding: 6px 12px !important; }
       .cc-screen-header { margin-bottom: 8px !important; }
