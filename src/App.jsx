@@ -68,7 +68,7 @@ const GlobalStyle = () => (
     @media print {
       .no-print { display: none !important; }
       .print-only { display: block !important; }
-      .print-only-flex { display: flex !important; }
+      .print-only-flex { display: flex !important; break-inside: avoid; page-break-inside: avoid; }
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .cc-root { zoom: 0.75; }
@@ -612,7 +612,7 @@ const FirmasBlock = ({ roles = ["Docente", "Coordinador(a)", "Director(a)"] }) =
   <div className="print-only-flex" style={{ justifyContent: "space-between", gap: 24, flexWrap: "wrap", marginTop: 22 }}>
     {roles.map((rol) => (
       <div key={rol} style={{ flex: 1, minWidth: 150, textAlign: "center" }}>
-        <div style={{ height: 26 }} />
+        <div style={{ height: 36 }} />
         <div style={{ borderTop: "1px solid #1C1C1E", paddingTop: 6, fontSize: 12, fontWeight: 600, color: "#1C1C1E" }}>
           Nombre y firma del {rol}
         </div>
