@@ -65,10 +65,11 @@ const GlobalStyle = () => (
     .cc-scrollx { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     .cc-scrollx::-webkit-scrollbar { display: none; }
     .print-only { display: none; }
+    .firmas-block { display: none; }
     @media print {
       .no-print { display: none !important; }
       .print-only { display: block !important; }
-      .firmas-block { break-inside: avoid; page-break-inside: avoid; }
+      .firmas-block { display: table !important; break-inside: avoid; page-break-inside: avoid; }
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .cc-root { zoom: 0.75; }
@@ -609,16 +610,20 @@ const ReportLetterhead = ({ title }) => (
 );
 
 const FirmasBlock = ({ roles = ["Docente", "Coordinador(a)", "Director(a)"] }) => (
-  <div className="print-only firmas-block" style={{ marginTop: 22 }}>
-    {roles.map((rol, idx) => (
-      <div key={rol} style={{ textAlign: "center", marginTop: idx === 0 ? 0 : 8, breakInside: "avoid" }}>
-        <div style={{ height: 20 }} />
-        <div style={{ borderTop: "1px solid #1C1C1E", paddingTop: 6, fontSize: 12, fontWeight: 600, color: "#1C1C1E", overflowWrap: "break-word" }}>
-          Nombre y firma del {rol}
-        </div>
-      </div>
-    ))}
-  </div>
+  <table className="firmas-block" style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", marginTop: 22 }}>
+    <tbody>
+      <tr>
+        {roles.map((rol) => <td key={rol} style={{ height: 30 }} />)}
+      </tr>
+      <tr>
+        {roles.map((rol) => (
+          <td key={rol} style={{ borderTop: "1px solid #1C1C1E", paddingTop: 6, fontSize: 12, fontWeight: 600, color: "#1C1C1E", textAlign: "center" }}>
+            Nombre y firma del {rol}
+          </td>
+        ))}
+      </tr>
+    </tbody>
+  </table>
 );
 
 const Sheet = ({ title, onClose, onSave, saveLabel = "Guardar", saveDisabled, children, isMobile }) => (
