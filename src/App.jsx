@@ -1154,6 +1154,8 @@ const CAL_LEYENDA = [
 ];
 const CAL_DIAS = ["D", "L", "M", "M", "J", "V", "S"];
 const CAL_MODULO_POR_TIPO = { cte: "cte", evaluacion: "evaluaciones", visita: "visitas", incidencia: "incidencias" };
+const CAL_ABREV = { cte: "C", evaluacion: "E", visita: "V", incidencia: "I" };
+const CAL_ETIQUETA = { cte: "CTE", evaluacion: "Evaluación", visita: "Visita", incidencia: "Incidencia" };
 
 function CalendarioModule({ visits, cte, evalPeriods, incidencias, teacherName, setActive, isMobile }) {
   const today = todayIso();
@@ -1235,8 +1237,14 @@ function CalendarioModule({ visits, cte, evalPeriods, incidencias, teacherName, 
               }}>
                 <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: isToday ? 700 : 500, color: T.ink }}>{d}</span>
                 {dayEvents.length > 0 && (
-                  <div style={{ display: "flex", gap: 2 }}>
-                    {dayEvents.slice(0, 3).map((ev, i) => <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: T[ev.tone] }} />)}
+                  <div style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center", maxWidth: "100%" }}>
+                    {dayEvents.slice(0, 3).map((ev, i) => (
+                      <span key={i} title={CAL_ETIQUETA[ev.type]} style={{
+                        fontSize: 8, fontWeight: 800, color: "#fff", background: T[ev.tone],
+                        borderRadius: 3, minWidth: 12, height: 12, lineHeight: "12px", textAlign: "center", flexShrink: 0,
+                      }}>{CAL_ABREV[ev.type]}</span>
+                    ))}
+                    {dayEvents.length > 3 && <span style={{ fontSize: 8, fontWeight: 700, color: T.inkFaint }}>+{dayEvents.length - 3}</span>}
                   </div>
                 )}
               </button>
@@ -1252,9 +1260,9 @@ function CalendarioModule({ visits, cte, evalPeriods, incidencias, teacherName, 
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {selectedEvents.map((ev, idx) => (
-              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: T[ev.tone], flexShrink: 0 }} />
-                <div style={{ flex: 1, fontSize: 13.5 }}>{ev.label}</div>
+              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Badge tone={ev.tone}>{CAL_ETIQUETA[ev.type]}</Badge>
+                <div style={{ flex: 1, minWidth: 120, fontSize: 13.5 }}>{ev.label}</div>
                 <button className="no-print" onClick={() => setActive(CAL_MODULO_POR_TIPO[ev.type])} style={{ background: "none", border: "none", color: T.blue, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Ver →</button>
               </div>
             ))}
