@@ -1231,20 +1231,21 @@ function CalendarioModule({ visits, cte, evalPeriods, incidencias, teacherName, 
             const isSelected = iso === selectedDate;
             return (
               <button key={idx} onClick={() => setSelectedDate(iso)} className="cc-tap" style={{
-                aspectRatio: "1", border: isSelected ? `1.5px solid ${T.blue}` : `1px solid ${isToday ? T.blue : "transparent"}`,
+                aspectRatio: "0.78", border: isSelected ? `1.5px solid ${T.blue}` : `1px solid ${isToday ? T.blue : "transparent"}`,
                 borderRadius: 8, background: isSelected ? T.blueTint : T.fill, cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, padding: 2,
+                display: "flex", flexDirection: "column", padding: "4px 3px 3px", gap: 2, overflow: "hidden",
               }}>
-                <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: isToday ? 700 : 500, color: T.ink }}>{d}</span>
+                <span style={{ fontSize: isMobile ? 11 : 13, fontWeight: isToday ? 700 : 500, color: T.ink, textAlign: "center" }}>{d}</span>
                 {dayEvents.length > 0 && (
-                  <div style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center", maxWidth: "100%" }}>
-                    {dayEvents.slice(0, 3).map((ev, i) => (
-                      <span key={i} title={CAL_ETIQUETA[ev.type]} style={{
-                        fontSize: 8, fontWeight: 800, color: "#fff", background: T[ev.tone],
-                        borderRadius: 3, minWidth: 12, height: 12, lineHeight: "12px", textAlign: "center", flexShrink: 0,
-                      }}>{CAL_ABREV[ev.type]}</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minHeight: 0 }}>
+                    {dayEvents.slice(0, 2).map((ev, i) => (
+                      <div key={i} title={CAL_ETIQUETA[ev.type]} style={{
+                        flex: 1, minHeight: 0, background: T[ev.tone], borderRadius: 3,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: "#fff", fontSize: isMobile ? 11 : 12, fontWeight: 800,
+                      }}>{CAL_ABREV[ev.type]}</div>
                     ))}
-                    {dayEvents.length > 3 && <span style={{ fontSize: 8, fontWeight: 700, color: T.inkFaint }}>+{dayEvents.length - 3}</span>}
+                    {dayEvents.length > 2 && <div style={{ flex: "0 0 auto", fontSize: 9, fontWeight: 700, color: T.inkFaint, textAlign: "center" }}>+{dayEvents.length - 2}</div>}
                   </div>
                 )}
               </button>
