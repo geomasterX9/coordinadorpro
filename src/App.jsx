@@ -66,13 +66,17 @@ const GlobalStyle = () => (
     .cc-scrollx::-webkit-scrollbar { display: none; }
     .print-only { display: none; }
     .firmas-block { display: none; }
+    .obs-item-grid { grid-template-columns: 1fr; }
+    @media (min-width: 700px) { .obs-item-grid { grid-template-columns: 1fr 1fr; } }
     @media print {
+      .obs-item-grid { grid-template-columns: 1fr 1fr !important; }
       .no-print { display: none !important; }
       .print-only { display: block !important; }
       .firmas-block { display: table !important; break-inside: avoid; page-break-inside: avoid; }
       html, body { background: #fff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .cc-root { zoom: 0.75; }
+      .obs-print { zoom: 1.333; }
       .cc-card { box-shadow: none !important; border: 1px solid #D1D1D6 !important; padding: 10px !important; margin: 0 0 6px !important; }
       .cc-row { padding: 6px 12px !important; }
       .cc-screen-header { margin-bottom: 8px !important; }
@@ -1771,7 +1775,7 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
   if (mode === "view") {
     const filled = Object.keys(draft.scores || {}).length;
     return (
-      <div>
+      <div className="obs-print">
         <ReportLetterhead title="Formato de Observación de Clase" />
         <ScreenHeader title={teacherName(draft.teacherId)} subtitle={fmtDate(draft.fecha)}
           action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1801,17 +1805,21 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
             {draft.sorpresa && <Badge tone="purple">Visita sorpresa</Badge>}
           </div>
         </Card>
-        {RUBRIC.map((cat) => (
-          <Card key={cat.id} style={{ marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: 13.5, color: T.blue, padding: "12px 14px 4px" }}>{cat.id}. {cat.titulo}</div>
-            {cat.items.map((it, idx) => (
-              <Row key={it.id} last={idx === cat.items.length - 1} style={{ justifyContent: "space-between" }}>
-                <span style={{ fontSize: 13 }}>{it.nombre}</span>
-                <Badge tone={draft.scores[it.id] >= 3 ? "green" : draft.scores[it.id] ? "orange" : "neutral"}>{draft.scores[it.id] || "—"}</Badge>
-              </Row>
-            ))}
-          </Card>
-        ))}
+        <Card style={{ marginBottom: 14, padding: "4px 0" }}>
+          {RUBRIC.map((cat) => (
+            <div key={cat.id} style={{ padding: "8px 14px 10px", borderBottom: `0.5px solid ${T.separator}` }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: T.blue, marginBottom: 2 }}>{cat.id}. {cat.titulo}</div>
+              <div className="obs-item-grid" style={{ display: "grid", columnGap: 16 }}>
+                {cat.items.map((it) => (
+                  <div key={it.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `0.5px solid ${T.separator}` }}>
+                    <span style={{ fontSize: 13 }}>{it.nombre}</span>
+                    <Badge tone={draft.scores[it.id] >= 3 ? "green" : draft.scores[it.id] ? "orange" : "neutral"}>{draft.scores[it.id] || "—"}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Card>
         {(draft.observaciones || draft.recomendaciones || draft.autorreflexion) && (
           <Card style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
             {draft.observaciones && <div style={{ fontSize: 13 }}><strong>Observaciones:</strong> {draft.observaciones}</div>}
