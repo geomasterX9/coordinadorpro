@@ -2627,7 +2627,7 @@ const ASIST_ORDER = ["presente", "parcial", "ausente"];
 const ASIST_LABEL = { presente: "Presente", parcial: "Permanencia parcial", ausente: "Ausente" };
 const ASIST_TONE = { presente: "green", parcial: "orange", ausente: "red" };
 
-function EvidenceThumb({ path, onRemove }) {
+function EvidenceThumb({ path, onRemove, readOnly }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let active = true;
@@ -2641,14 +2641,16 @@ function EvidenceThumb({ path, onRemove }) {
           <div style={{ width: 16, height: 16, border: `2px solid ${T.separator}`, borderTopColor: T.blue, borderRadius: "50%", animation: "cc-spin .8s linear infinite" }} />
         </div>
       )}
-      <button onClick={onRemove} style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-        <X size={11} color="#fff" />
-      </button>
+      {!readOnly && (
+        <button className="no-print" onClick={onRemove} style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <X size={11} color="#fff" />
+        </button>
+      )}
     </div>
   );
 }
 
-function DocChip({ ev, onRemove }) {
+function DocChip({ ev, onRemove, readOnly }) {
   const openDoc = async () => {
     const url = await getSignedEvidenciaUrl(ev.path);
     if (url) window.open(url, "_blank");
@@ -2660,13 +2662,14 @@ function DocChip({ ev, onRemove }) {
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: T.ink }}>{ev.nombre}</span>
       </button>
       <span style={{ color: T.inkFaint, flexShrink: 0 }}>{fileSizeLabel(ev.size)}</span>
-      <button onClick={onRemove} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, flexShrink: 0 }}><X size={12} /></button>
+      {!readOnly && <button onClick={onRemove} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, flexShrink: 0 }}><X size={12} /></button>}
     </div>
   );
 }
 
 function CteModule({ cte, setCte, isMobile, teachers }) {
   const [showForm, setShowForm] = useState(false);
+  const [viewingId, setViewingId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const photoInputRef = useRef(null);
   const docInputRef = useRef(null);
@@ -2685,6 +2688,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
     if (!confirm("¿Eliminar esta sesión y sus evidencias?")) return;
     await removeEvidenciaFolder(`cte/${id}`);
     setCte(cte.filter((s) => s.id !== id));
+    if (viewingId === id) setViewingId(null);
   };
   const cycleStatus = (s) => {
     const order = ["pendiente", "en_proceso", "cumplido"];
@@ -2746,6 +2750,60 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
     const parciales = teachers.filter((t) => asis[t.id] === "parcial").length;
     return { presentes: teachers.length - ausentes, total: teachers.length, ausentes, parciales };
   };
+
+  if (viewingId) {
+    const s = cte.find((x) => x.id === viewingId);
+    if (!s) { setViewingId(null); return null; }
+    const att = attendanceSummary(s);
+    return (
+      <div>
+        <ReportLetterhead title={`Consejo Técnico Escolar · Sesión del ${fmtDateShort(s.fecha)}`} />
+        <ScreenHeader title={fmtDate(s.fecha)} subtitle={s.tema}
+          action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <IconBtn icon={ChevronLeft} onClick={() => setViewingId(null)} />
+            <IconBtn icon={Pencil} onClick={() => edit(s)} />
+            <IconBtn icon={Printer} onClick={() => window.print()} />
+          </div>} />
+
+        <Card style={{ padding: 16, marginBottom: 14 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            <Badge tone={statusTone[s.status]}>{statusLabel[s.status]}</Badge>
+            <Badge tone={att.ausentes === 0 ? "green" : "orange"}>{att.presentes}/{att.total} presentes</Badge>
+            {att.parciales > 0 && <Badge tone="orange">{att.parciales} permanencia parcial</Badge>}
+          </div>
+          {s.acuerdos && <div style={{ fontSize: 13, marginBottom: 8 }}><strong>Acuerdos:</strong> {s.acuerdos}</div>}
+          {s.responsables && <div style={{ fontSize: 13 }}><strong>Responsables del seguimiento:</strong> {s.responsables}</div>}
+        </Card>
+
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Asistencia y permanencia</div>
+        <Card style={{ marginBottom: 14 }}>
+          {teachers.map((t, idx) => {
+            const st = s.asistencia?.[t.id] || "presente";
+            return (
+              <Row key={t.id} last={idx === teachers.length - 1} style={{ justifyContent: "space-between" }}>
+                <span style={{ fontSize: 13.5 }}>{t.name}</span>
+                <Badge tone={ASIST_TONE[st]}>{ASIST_LABEL[st]}</Badge>
+              </Row>
+            );
+          })}
+        </Card>
+
+        {(s.evidencias || []).length > 0 && (
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Evidencias</div>
+            <Card style={{ padding: 14, marginBottom: 14 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {s.evidencias.map((ev) => ev.tipo === "foto"
+                  ? <EvidenceThumb key={ev.id} path={ev.path} readOnly />
+                  : <DocChip key={ev.id} ev={ev} readOnly />)}
+              </div>
+            </Card>
+          </div>
+        )}
+        <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -2812,7 +2870,7 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
             const att = attendanceSummary(s);
             const nEvid = (s.evidencias || []).length;
             return (
-              <Card key={s.id} onClick={() => edit(s)} className="cc-row-tap" style={{ padding: 14, cursor: "pointer" }}>
+              <Card key={s.id} onClick={() => setViewingId(s.id)} className="cc-row-tap" style={{ padding: 14, cursor: "pointer" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
