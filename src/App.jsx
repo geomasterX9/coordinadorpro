@@ -107,32 +107,13 @@ function useIsMobile(ref) {
 }
 
 /* ============================== SEED DATA ============================== */
-const seedTeachers = () => {
-  const rows = [
-    ["Rosa María Arcos Hernández", "Español"],
-    ["Ma. Leticia Hernández Martínez", "Español"],
-    ["Amy Anahi Villegas León", "Español"],
-    ["Nora Elizabeth Juárez Santillán", "Inglés, Tecnología"],
-    ["José de Jesús Donjuan López", "Inglés"],
-    ["Joziany Edith Trejo Arcos", "Inglés"],
-    ["Verónica del Carmen Oñate González", "Matemáticas"],
-    ["Alejandra Odhett Madrigal Gallardo", "Matemáticas"],
-    ["Erika Jazmín Zúñiga Banda", "Matemáticas"],
-    ["Alejandra Campos Gamboa", "Matemáticas"],
-    ["Luis Alfredo Alvarez Rodríguez", "Ciencias"],
-    ["Ilse Rocío Patiño Miranda", "Ciencias"],
-    ["Ada Paulina Rubio Chávez", "Ciencias"],
-    ["Martina García Ramos", "Ciencias"],
-    ["Aser Rosas Marquez", "Historia, Geografía"],
-    ["Nohemi Griselda Iracheta", "Historia, FCyE"],
-    ["Zulema Karina Urbina Rodríguez", "FCyE"],
-    ["María del Socorro Contreras López", "Artes"],
-    ["Miguel Angel Armadillo Fortuna", "Artes"],
-  ];
-  return rows.map(([name, disciplina], i) => ({
-    id: "t" + (i + 1), name, disciplina, telefono: "", correo: "", notas: "",
-  }));
-};
+// Intencionalmente vacío: antes traía nombres reales de docentes hardcodeados
+// aquí, lo que los exponía en el bundle público de JS sin necesidad de sesión
+// (cualquiera podía descargarlo con curl, sin loguearse). El primer arranque
+// debe partir en cero; el coordinador da de alta a su plantilla real desde el
+// módulo de Docentes (alta manual o importación por CSV), quedando esos datos
+// solo en Supabase, protegidos por las políticas de RLS de `app_data`.
+const seedTeachers = () => [];
 
 const VISIT_GROUP_A = new Set(["Español", "Inglés, Tecnología", "Inglés", "Matemáticas"]);
 function visitsForTeacher(t) {
