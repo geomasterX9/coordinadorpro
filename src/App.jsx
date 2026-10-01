@@ -3,7 +3,7 @@ import {
   CalendarCheck, ClipboardCheck, CalendarClock, Users, AlertTriangle,
   BookOpenCheck, LayoutGrid, Plus, X, Check, ChevronRight, Printer,
   Search, Pencil, Trash2, Clock, ChevronLeft, Image as ImageIcon, Paperclip,
-  FileText, LogOut, Lock, MoreHorizontal, GraduationCap, Calendar, Upload, Download, MessageCircle, Mail
+  FileText, LogOut, Lock, MoreHorizontal, GraduationCap, Calendar, Upload, Download, MessageCircle, Mail, UserCog, Eye
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -328,6 +328,7 @@ const KEYS = {
   incidencias: "coordinacion:incidencias",
   cte: "coordinacion:cte",
   planeaciones: "coordinacion:planeaciones",
+  coordinadores: "coordinacion:coordinadores",
 };
 
 async function loadKey(key, fallback) {
@@ -424,6 +425,7 @@ function normalizeTeacher(t) {
   return {
     ...t,
     fotoPath: t.fotoPath || "",
+    coordinadorId: t.coordinadorId || null,
     personal: { curp: "", fechaNacimiento: "", domicilio: "", contactoEmergenciaNombre: "", contactoEmergenciaTelefono: "", ...(t.personal || {}) },
     laboral: { clavePresupuestal: "", categoria: "", nombramiento: "", horasFrenteGrupo: "", fechaIngreso: "", ...(t.laboral || {}) },
     formacion: { titulo: "", cedulaProfesional: "", estudios: [], cursos: [], ...(t.formacion || {}) },
@@ -840,10 +842,11 @@ function AppShell({ session }) {
   const [incidencias, setIncidencias] = useState([]);
   const [cte, setCte] = useState([]);
   const [planeaciones, setPlaneaciones] = useState([]);
+  const [coordinadores, setCoordinadores] = useState([]);
 
   useEffect(() => {
     (async () => {
-      const [tch, vis, obs, evp, inc, cteData, plan] = await Promise.all([
+      const [tch, vis, obs, evp, inc, cteData, plan, coord] = await Promise.all([
         loadKey(KEYS.teachers, null),
         loadKey(KEYS.visits, null),
         loadKey(KEYS.observations, []),
@@ -851,6 +854,7 @@ function AppShell({ session }) {
         loadKey(KEYS.incidencias, []),
         loadKey(KEYS.cte, null),
         loadKey(KEYS.planeaciones, null),
+        loadKey(KEYS.coordinadores, []),
       ]);
       // null = nunca se guardó (primera vez, usar datos de ejemplo).
       // Un arreglo vacío es una elección deliberada del usuario y debe respetarse.
@@ -864,6 +868,7 @@ function AppShell({ session }) {
       setIncidencias((inc || []).map(normalizeIncidencia));
       setCte(cteData !== null ? cteData : seedCte());
       setPlaneaciones(finalPlaneaciones);
+      setCoordinadores(coord || []);
       setReady(true);
     })();
   }, []);
@@ -875,6 +880,22 @@ function AppShell({ session }) {
   const persistIncidencias = useCallback((next) => { setIncidencias(next); saveKey(KEYS.incidencias, next); }, []);
   const persistCte = useCallback((next) => { setCte(next); saveKey(KEYS.cte, next); }, []);
   const persistPlaneaciones = useCallback((next) => { setPlaneaciones(next); saveKey(KEYS.planeaciones, next); }, []);
+  const persistCoordinadores = useCallback((next) => { setCoordinadores(next); saveKey(KEYS.coordinadores, next); }, []);
+
+  const [verTodosPref, setVerTodosPref] = useState(() => {
+    try { return localStorage.getItem("cc_ver_todos") === "1"; } catch { return false; }
+  });
+  const setVerTodos = useCallback((v) => {
+    setVerTodosPref(v);
+    try { localStorage.setItem("cc_ver_todos", v ? "1" : "0"); } catch { /* noop */ }
+  }, []);
+  const myCoordinador = coordinadores.find((c) => c.email?.trim().toLowerCase() === session.user.email?.trim().toLowerCase()) || null;
+  const verTodos = verTodosPref || !myCoordinador;
+  const visibleTeacherIds = useMemo(() => {
+    if (verTodos) return new Set(teachers.map((t) => t.id));
+    return new Set(teachers.filter((t) => !t.coordinadorId || t.coordinadorId === myCoordinador.id).map((t) => t.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teachers, verTodos, myCoordinador?.id]);
 
   const [obsPrefill, setObsPrefill] = useState(null);
   const goToObservation = useCallback((teacherId) => { setObsPrefill(teacherId); setActive("observacion"); }, []);
@@ -897,6 +918,7 @@ function AppShell({ session }) {
     { id: "docentes", label: "Docentes", icon: Users },
     { id: "incidencias", label: "Incidencias", icon: AlertTriangle },
     { id: "cte", label: "CTE", icon: BookOpenCheck },
+    { id: "coordinadores", label: "Coordinadores", icon: UserCog },
   ];
   const MOBILE_PRIMARY_IDS = ["dashboard", "visitas", "observacion", "docentes"];
   const mobilePrimaryNav = MOBILE_PRIMARY_IDS.map((id) => nav.find((n) => n.id === id));
@@ -912,11 +934,13 @@ function AppShell({ session }) {
     );
   }
 
-  const moduleProps = { teachers, visits, observations, evalPeriods, incidencias, cte, planeaciones, teacherName, isMobile, session,
+  const moduleProps = { teachers, visits, observations, evalPeriods, incidencias, cte, planeaciones, coordinadores, teacherName, isMobile, session,
     setVisits: persistVisits, setObservations: persistObservations, setEvalPeriods: persistEvalPeriods,
-    setTeachers: persistTeachers, setIncidencias: persistIncidencias, setCte: persistCte, setPlaneaciones: persistPlaneaciones, setActive,
+    setTeachers: persistTeachers, setIncidencias: persistIncidencias, setCte: persistCte, setPlaneaciones: persistPlaneaciones,
+    setCoordinadores: persistCoordinadores, setActive,
     goToObservation, obsPrefill, clearObsPrefill,
-    goToObservationRecord, obsViewPrefill, clearObsViewPrefill };
+    goToObservationRecord, obsViewPrefill, clearObsViewPrefill,
+    myCoordinador, verTodos, setVerTodos, visibleTeacherIds };
 
   return (
     <div ref={rootRef} className="cc-root" style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.ink }}>
@@ -931,6 +955,19 @@ function AppShell({ session }) {
               <div style={{ fontSize: 11.5, color: T.sidebarTextMuted, marginTop: 1 }}>Sec. Técnica No. 84</div>
             </div>
           </div>
+          {myCoordinador ? (
+            <div style={{ padding: "0 8px" }}>
+              <div style={{ fontSize: 10.5, color: T.sidebarTextMuted, marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.4 }}>{myCoordinador.nombre}</div>
+              <div style={{ display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: 2, gap: 2 }}>
+                <button onClick={() => setVerTodos(false)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: !verTodos ? T.blue : "transparent", color: !verTodos ? "#fff" : T.sidebarTextMuted }}>Mis docentes</button>
+                <button onClick={() => setVerTodos(true)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: verTodos ? T.blue : "transparent", color: verTodos ? "#fff" : T.sidebarTextMuted }}>Ver todos</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px" }}>
+              Regístrate en "Coordinadores" para filtrar tus docentes.
+            </div>
+          )}
           <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {nav.map((n) => {
               const Icon = n.icon;
@@ -968,6 +1005,12 @@ function AppShell({ session }) {
             </button>
           </div>
         )}
+        {isMobile && myCoordinador && (
+          <div className="no-print" style={{ display: "flex", background: T.fill, borderRadius: 8, padding: 2, gap: 2, margin: "10px 16px 0" }}>
+            <button onClick={() => setVerTodos(false)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: !verTodos ? T.blue : "transparent", color: !verTodos ? "#fff" : T.inkSoft }}>Mis docentes</button>
+            <button onClick={() => setVerTodos(true)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: verTodos ? T.blue : "transparent", color: verTodos ? "#fff" : T.inkSoft }}>Ver todos</button>
+          </div>
+        )}
         <div style={{ flex: 1, padding: isMobile ? "18px 16px 90px" : "26px 32px", overflow: "auto" }}>
           {active === "dashboard" && <Dashboard {...moduleProps} />}
           {active === "visitas" && <VisitasModule {...moduleProps} />}
@@ -976,8 +1019,9 @@ function AppShell({ session }) {
           {active === "planeaciones" && <PlaneacionesModule {...moduleProps} />}
           {active === "docentes" && <DocentesModule {...moduleProps} />}
           {active === "incidencias" && <IncidenciasModule {...moduleProps} />}
-          {active === "cte" && <CteModule {...moduleProps} />}
+          {active === "cte" && <CteModule {...moduleProps} teachers={teachers} />}
           {active === "calendario" && <CalendarioModule {...moduleProps} />}
+          {active === "coordinadores" && <CoordinadoresModule {...moduleProps} />}
         </div>
       </div>
 
@@ -1047,7 +1091,11 @@ function AppShell({ session }) {
 }
 
 /* ============================== DASHBOARD ============================== */
-function Dashboard({ teachers, visits, observations, evalPeriods, incidencias, cte, setActive, isMobile }) {
+function Dashboard({ teachers: allTeachers, visits: allVisits, observations: allObservations, evalPeriods, incidencias: allIncidencias, cte, setActive, isMobile, visibleTeacherIds }) {
+  const teachers = allTeachers.filter((t) => visibleTeacherIds.has(t.id));
+  const visits = allVisits.filter((v) => visibleTeacherIds.has(v.teacherId));
+  const observations = allObservations.filter((o) => visibleTeacherIds.has(o.teacherId));
+  const incidencias = allIncidencias.map(normalizeIncidencia).filter((i) => i.teacherIds.length === 0 || i.teacherIds.some((id) => visibleTeacherIds.has(id)));
   const completed = visits.filter((v) => v.status === "realizada").length;
   const pct = visits.length ? Math.round((completed / visits.length) * 100) : 0;
 
@@ -1150,7 +1198,9 @@ const CAL_MODULO_POR_TIPO = { cte: "cte", evaluacion: "evaluaciones", visita: "v
 const CAL_ABREV = { cte: "C", evaluacion: "E", visita: "V", incidencia: "I" };
 const CAL_ETIQUETA = { cte: "CTE", evaluacion: "Evaluación", visita: "Visita", incidencia: "Incidencia" };
 
-function CalendarioModule({ visits, cte, evalPeriods, incidencias, teacherName, setActive, isMobile }) {
+function CalendarioModule({ visits: allVisits, cte, evalPeriods, incidencias: allIncidencias, teacherName, setActive, isMobile, visibleTeacherIds }) {
+  const visits = allVisits.filter((v) => visibleTeacherIds.has(v.teacherId));
+  const incidencias = allIncidencias.map(normalizeIncidencia).filter((i) => i.teacherIds.length === 0 || i.teacherIds.some((id) => visibleTeacherIds.has(id)));
   const today = todayIso();
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
   const [selectedDate, setSelectedDate] = useState(today);
@@ -1268,7 +1318,8 @@ function CalendarioModule({ visits, cte, evalPeriods, incidencias, teacherName, 
 }
 
 /* ============================== VISITAS MODULE ============================== */
-function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation, goToObservationRecord, teacherName }) {
+function VisitasModule({ teachers: allTeachers, visits, setVisits, isMobile, goToObservation, goToObservationRecord, teacherName, visibleTeacherIds }) {
+  const teachers = allTeachers.filter((t) => visibleTeacherIds.has(t.id));
   const [filter, setFilter] = useState("");
   const [sorpresaDraft, setSorpresaDraft] = useState(null);
   const months = ["SEPT", "OCT", "ENERO", "FEBRERO", "ABRIL", "JUNIO"];
@@ -1280,11 +1331,12 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
   }, [teachers, visits, filter]);
 
   const sorpresas = useMemo(() =>
-    visits.filter((v) => v.tipo === "sorpresa").slice().sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")),
-  [visits]);
+    visits.filter((v) => v.tipo === "sorpresa" && visibleTeacherIds.has(v.teacherId)).slice().sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")),
+  [visits, visibleTeacherIds]);
 
   const toggleStatus = (visitId) => setVisits(visits.map((v) => v.id === visitId ? { ...v, status: v.status === "realizada" ? "pendiente" : "realizada" } : v));
-  const completed = visits.filter((v) => v.status === "realizada").length;
+  const visibleVisits = visits.filter((v) => visibleTeacherIds.has(v.teacherId));
+  const completed = visibleVisits.filter((v) => v.status === "realizada").length;
 
   const saveSorpresa = () => {
     if (!sorpresaDraft.teacherId || !sorpresaDraft.fecha) return;
@@ -1296,7 +1348,7 @@ function VisitasModule({ teachers, visits, setVisits, isMobile, goToObservation,
   return (
     <div>
       <ReportLetterhead title="Calendario de Visitas de Acompañamiento" />
-      <ScreenHeader title="Visitas" subtitle={`${completed} de ${visits.length} realizadas`}
+      <ScreenHeader title="Visitas" subtitle={`${completed} de ${visibleVisits.length} realizadas`}
         action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Btn kind="tinted" size="sm" onClick={() => setSorpresaDraft({ teacherId: teachers[0]?.id || "", fecha: todayIso(), notas: "" })}><Plus size={13} /> Visita sorpresa</Btn>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
@@ -1416,7 +1468,8 @@ const thStyle = { textAlign: "left", padding: "10px 14px", fontSize: 11.5, fontW
 const tdStyle = { padding: "10px 14px", color: T.ink, verticalAlign: "middle" };
 
 /* ============================== PLANEACIONES MODULE ============================== */
-function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile }) {
+function PlaneacionesModule({ teachers: allTeachers, planeaciones, setPlaneaciones, isMobile, visibleTeacherIds }) {
+  const teachers = allTeachers.filter((t) => visibleTeacherIds.has(t.id));
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState(null);
 
@@ -1437,7 +1490,7 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teachers, planeaciones, filter]);
 
-  const totalDone = planeaciones.filter((p) => p.status === "entregada").length;
+  const totalDone = planeaciones.filter((p) => p.status === "entregada" && visibleTeacherIds.has(p.teacherId)).length;
   const totalAll = teachers.length * PLANEACION_TIPOS.length;
 
   const setMetodologia = (key) => setEditing((e) => ({ ...e, evaluacion: { ...(e.evaluacion || blankEvaluacion()), metodologia: key || null, fases: {} } }));
@@ -1615,7 +1668,9 @@ function PlaneacionesModule({ teachers, planeaciones, setPlaneaciones, isMobile 
 }
 
 /* ============================== OBSERVACIÓN MODULE ============================== */
-function ObservacionModule({ teachers, observations, setObservations, visits, setVisits, teacherName, isMobile, obsPrefill, clearObsPrefill, obsViewPrefill, clearObsViewPrefill }) {
+function ObservacionModule({ teachers: allTeachers, observations: allObservations, setObservations, visits, setVisits, teacherName, isMobile, obsPrefill, clearObsPrefill, obsViewPrefill, clearObsViewPrefill, visibleTeacherIds }) {
+  const teachers = allTeachers.filter((t) => visibleTeacherIds.has(t.id));
+  const observations = allObservations.filter((o) => visibleTeacherIds.has(o.teacherId));
   const [mode, setMode] = useState("list");
   const [editingId, setEditingId] = useState(null);
   const blank = () => ({
@@ -1636,7 +1691,7 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
 
   useEffect(() => {
     if (obsViewPrefill) {
-      const found = observations.find((o) => o.id === obsViewPrefill);
+      const found = allObservations.find((o) => o.id === obsViewPrefill);
       if (found) view(found);
       clearObsViewPrefill();
     }
@@ -1667,13 +1722,13 @@ function ObservacionModule({ teachers, observations, setObservations, visits, se
 
   const save = () => {
     if (!draft.teacherId || !draft.fecha) return;
-    if (editingId) setObservations(observations.map((o) => (o.id === editingId ? draft : o)));
-    else setObservations([draft, ...observations]);
+    if (editingId) setObservations(allObservations.map((o) => (o.id === editingId ? draft : o)));
+    else setObservations([draft, ...allObservations]);
     linkVisit(draft);
     setMode("list");
   };
   const remove = (id) => {
-    setObservations(observations.filter((o) => o.id !== id));
+    setObservations(allObservations.filter((o) => o.id !== id));
     unlinkVisit(id);
   };
   const setScore = (itemId, val) => setDraft({ ...draft, scores: { ...draft.scores, [itemId]: val } });
@@ -1917,7 +1972,7 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
 const CSV_TEMPLATE = "Nombre,Disciplina,Telefono,Correo\nJuan Pérez López,Matemáticas,4491234567,juan.perez@sec84.edu.mx\n";
 
 function DocentesModule(props) {
-  const { teachers, setTeachers, visits, setVisits, observations, setObservations, incidencias, setIncidencias, planeaciones, setPlaneaciones, isMobile } = props;
+  const { teachers, setTeachers, visits, setVisits, observations, setObservations, incidencias, setIncidencias, planeaciones, setPlaneaciones, isMobile, coordinadores, myCoordinador, visibleTeacherIds } = props;
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -1933,7 +1988,9 @@ function DocentesModule(props) {
     return { visits: `${done}/${tv.length}`, observations: tObs.length, avg };
   };
 
-  const filtered = teachers.filter((t) => !filter || t.name.toLowerCase().includes(filter.toLowerCase()) || t.disciplina.toLowerCase().includes(filter.toLowerCase()));
+  const visibleTeachers = teachers.filter((t) => visibleTeacherIds.has(t.id));
+  const filtered = visibleTeachers.filter((t) => !filter || t.name.toLowerCase().includes(filter.toLowerCase()) || t.disciplina.toLowerCase().includes(filter.toLowerCase()));
+  const coordinadorName = (id) => coordinadores.find((c) => c.id === id)?.nombre || null;
   const save = () => {
     if (!editing.name) return;
     const newTeacher = normalizeTeacher(editing);
@@ -1993,10 +2050,10 @@ function DocentesModule(props) {
 
   return (
     <div>
-      <ScreenHeader title="Docentes" subtitle={`${teachers.length} registrados`}
+      <ScreenHeader title="Docentes" subtitle={`${visibleTeachers.length} registrados`}
         action={<div style={{ display: "flex", gap: 8 }}>
           <Btn kind="tinted" size="sm" onClick={() => csvInputRef.current?.click()}><Upload size={14} /> Importar CSV</Btn>
-          <Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("t"), name: "", disciplina: "", telefono: "", correo: "", notas: "" })}><Plus size={14} /> Agregar</Btn>
+          <Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("t"), name: "", disciplina: "", telefono: "", correo: "", notas: "", coordinadorId: myCoordinador?.id || null })}><Plus size={14} /> Agregar</Btn>
         </div>} />
       <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={handleCsvPick} />
       <div className="no-print" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, background: T.card, borderRadius: 10, padding: "9px 12px" }}>
@@ -2047,6 +2104,12 @@ function DocentesModule(props) {
             <Field label="Teléfono"><input style={inputStyle} value={editing.telefono} onChange={(e) => setEditing({ ...editing, telefono: e.target.value })} /></Field>
             <Field label="Correo"><input style={inputStyle} value={editing.correo} onChange={(e) => setEditing({ ...editing, correo: e.target.value })} /></Field>
           </div>
+          <Field label="Coordinador(a) responsable">
+            <select style={inputStyle} value={editing.coordinadorId || ""} onChange={(e) => setEditing({ ...editing, coordinadorId: e.target.value || null })}>
+              <option value="">Sin asignar (visible para todos)</option>
+              {coordinadores.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </Field>
         </Sheet>
       )}
 
@@ -2069,6 +2132,7 @@ function DocentesModule(props) {
                 <Badge tone="green">Visitas {s.visits}</Badge>
                 <Badge tone="orange">Obs. {s.observations}</Badge>
                 {s.avg && <Badge tone="blue">Prom. {s.avg}</Badge>}
+                {coordinadorName(t.coordinadorId) && <Badge tone="purple">{coordinadorName(t.coordinadorId)}</Badge>}
               </div>
               {(t.telefono || t.correo) && <div style={{ fontSize: 12, color: T.inkFaint, marginTop: 8 }}>{t.telefono}{t.telefono && t.correo && " · "}{t.correo}</div>}
             </Card>
@@ -2111,7 +2175,7 @@ function TeacherAvatar({ path, uploading, onPick, onRemove }) {
   );
 }
 
-function TeacherExpediente({ teacher, teachers, visits, observations, incidencias, planeaciones, session, isMobile, onBack, setActive, goToObservationRecord, setTeachers }) {
+function TeacherExpediente({ teacher, teachers, visits, observations, incidencias, planeaciones, session, isMobile, onBack, setActive, goToObservationRecord, setTeachers, coordinadores }) {
   const updateTeacher = (patch) => setTeachers(teachers.map((t) => (t.id === teacher.id ? { ...t, ...patch } : t)));
 
   const [editingBasics, setEditingBasics] = useState(null);
@@ -2134,12 +2198,14 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
     name: teacher.name, disciplina: teacher.disciplina, telefono: teacher.telefono, correo: teacher.correo,
     personal: { ...teacher.personal }, laboral: { ...teacher.laboral },
     titulo: teacher.formacion.titulo, cedulaProfesional: teacher.formacion.cedulaProfesional,
+    coordinadorId: teacher.coordinadorId || null,
   });
   const saveBasics = () => {
     updateTeacher({
       name: editingBasics.name, disciplina: editingBasics.disciplina, telefono: editingBasics.telefono, correo: editingBasics.correo,
       personal: editingBasics.personal, laboral: editingBasics.laboral,
       formacion: { ...teacher.formacion, titulo: editingBasics.titulo, cedulaProfesional: editingBasics.cedulaProfesional },
+      coordinadorId: editingBasics.coordinadorId || null,
     });
     setEditingBasics(null);
   };
@@ -2213,6 +2279,12 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
             <Field label="Teléfono"><input style={inputStyle} value={editingBasics.telefono} onChange={(e) => setEditingBasics({ ...editingBasics, telefono: e.target.value })} /></Field>
             <Field label="Correo"><input style={inputStyle} value={editingBasics.correo} onChange={(e) => setEditingBasics({ ...editingBasics, correo: e.target.value })} /></Field>
           </div>
+          <Field label="Coordinador(a) responsable">
+            <select style={inputStyle} value={editingBasics.coordinadorId || ""} onChange={(e) => setEditingBasics({ ...editingBasics, coordinadorId: e.target.value || null })}>
+              <option value="">Sin asignar (visible para todos)</option>
+              {coordinadores.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </Field>
 
           <div style={{ fontWeight: 700, fontSize: 13, color: T.blue, marginTop: 4 }}>Datos personales</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -2441,7 +2513,9 @@ const ChipToggle = ({ label, active, onClick }) => (
   }}>{label}</button>
 );
 
-function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, teacherName, setActive }) {
+function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers: allTeachers, teacherName, setActive, visibleTeacherIds }) {
+  const teachers = allTeachers.filter((t) => visibleTeacherIds.has(t.id));
+  const visibleIncidencias = incidencias.map(normalizeIncidencia).filter((i) => i.teacherIds.length === 0 || i.teacherIds.some((id) => visibleTeacherIds.has(id)));
   const [showForm, setShowForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState("todas");
   const [uploading, setUploading] = useState(false);
@@ -2503,14 +2577,14 @@ function IncidenciasModule({ incidencias, setIncidencias, isMobile, teachers, te
     setDraft((d) => ({ ...d, evidencias: (d.evidencias || []).filter((x) => x.id !== id) }));
   };
 
-  const filtered = incidencias.filter((i) => filterStatus === "todas" || i.status === filterStatus);
+  const filtered = visibleIncidencias.filter((i) => filterStatus === "todas" || i.status === filterStatus);
   const tipos = ["Académica", "Disciplina", "Administrativa", "Otra"];
   const tipoTone = { "Académica": "blue", "Disciplina": "red", "Administrativa": "orange", "Otra": "neutral" };
 
   return (
     <div>
       <ReportLetterhead title="Registro de Incidencias" />
-      <ScreenHeader title="Incidencias" subtitle={`${incidencias.filter((i) => i.status !== "cerrada").length} abiertas de ${incidencias.length}`}
+      <ScreenHeader title="Incidencias" subtitle={`${visibleIncidencias.filter((i) => i.status !== "cerrada").length} abiertas de ${visibleIncidencias.length}`}
         action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Btn kind="tinted" size="sm" onClick={() => window.print()}><Printer size={13} /> Imprimir</Btn>
           <Btn kind="filled" size="sm" onClick={() => { setDraft(makeBlank()); setShowForm(true); }}><Plus size={14} /> Registrar</Btn>
@@ -2880,6 +2954,67 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
         </div>
       )}
       <FirmasBlock roles={["Coordinador(a)", "Director(a)"]} />
+    </div>
+  );
+}
+
+/* ============================== COORDINADORES MODULE ============================== */
+function CoordinadoresModule({ coordinadores, setCoordinadores, teachers, isMobile, myCoordinador }) {
+  const [editing, setEditing] = useState(null);
+
+  const save = () => {
+    if (!editing.nombre || !editing.email) return;
+    const exists = coordinadores.some((c) => c.id === editing.id);
+    const email = editing.email.trim().toLowerCase();
+    setCoordinadores(exists
+      ? coordinadores.map((c) => (c.id === editing.id ? { ...editing, email } : c))
+      : [...coordinadores, { ...editing, email }]);
+    setEditing(null);
+  };
+  const remove = (id) => {
+    if (!confirm("¿Eliminar este coordinador? Los docentes que tenía asignados quedarán sin asignar (visibles para todos).")) return;
+    setCoordinadores(coordinadores.filter((c) => c.id !== id));
+  };
+  const teacherCount = (id) => teachers.filter((t) => t.coordinadorId === id).length;
+
+  return (
+    <div>
+      <ScreenHeader title="Coordinadores" subtitle="Gestiona quién ve y gestiona a cada docente"
+        action={<Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("co"), nombre: "", email: "" })}><Plus size={14} /> Agregar</Btn>} />
+
+      <div className="no-print" style={{ fontSize: 12, color: T.inkFaint, marginBottom: 14 }}>
+        Registra aquí a cada coordinador con el correo que usa para iniciar sesión. Al asignar docentes a un coordinador en el módulo de Docentes, ese coordinador verá solo a sus docentes (con la opción de "Ver todos"). CTE y Evaluaciones siempre se comparten entre todos.
+      </div>
+
+      {editing && (
+        <Sheet title={coordinadores.some((c) => c.id === editing.id) ? "Editar coordinador" : "Nuevo coordinador"} onClose={() => setEditing(null)} onSave={save} saveDisabled={!editing.nombre || !editing.email} isMobile={isMobile}>
+          <Field label="Nombre completo"><input style={inputStyle} value={editing.nombre} onChange={(e) => setEditing({ ...editing, nombre: e.target.value })} /></Field>
+          <Field label="Correo (el mismo con el que inicia sesión)"><input type="email" style={inputStyle} value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></Field>
+        </Sheet>
+      )}
+
+      {coordinadores.length === 0 ? (
+        <Card><EmptyHint icon={UserCog} text="Aún no hay coordinadores registrados." /></Card>
+      ) : (
+        <Card>
+          {coordinadores.map((c, idx) => (
+            <Row key={c.id} last={idx === coordinadores.length - 1}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                  {c.nombre}
+                  {myCoordinador?.id === c.id && <Badge tone="blue">Tú</Badge>}
+                </div>
+                <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 2 }}>{c.email}</div>
+              </div>
+              <Badge tone="purple">{teacherCount(c.id)} docente{teacherCount(c.id) === 1 ? "" : "s"}</Badge>
+              <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                <IconBtn icon={Pencil} size={28} onClick={() => setEditing(c)} />
+                <IconBtn icon={Trash2} size={28} tone="red" onClick={() => remove(c.id)} />
+              </div>
+            </Row>
+          ))}
+        </Card>
+      )}
     </div>
   );
 }
