@@ -3,7 +3,7 @@ import {
   CalendarCheck, ClipboardCheck, CalendarClock, Users, AlertTriangle,
   BookOpenCheck, LayoutGrid, Plus, X, Check, ChevronRight, Printer,
   Search, Pencil, Trash2, Clock, ChevronLeft, Image as ImageIcon, Paperclip,
-  FileText, LogOut, Lock, MoreHorizontal, GraduationCap, Calendar, Upload, Download, MessageCircle, Mail, UserCog, Eye
+  FileText, LogOut, Lock, MoreHorizontal, GraduationCap, Calendar, Upload, Download, MessageCircle, Mail, UserCog
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -437,6 +437,7 @@ function normalizeIncidencia(i) {
   if (i.teacherIds) return { notasInvolucrados: "", evidencias: [], ...i };
   return { ...i, teacherIds: [], notasInvolucrados: i.involucrados || "", evidencias: i.evidencias || [] };
 }
+function normalizeCoordinador(c) { return { role: "coordinador", ...c }; }
 const NOMBRAMIENTOS = ["Base", "Interinato", "Honorarios", "Contrato", "Otro"];
 
 function readFileAsDataURL(file) {
@@ -868,7 +869,7 @@ function AppShell({ session }) {
       setIncidencias((inc || []).map(normalizeIncidencia));
       setCte(cteData !== null ? cteData : seedCte());
       setPlaneaciones(finalPlaneaciones);
-      setCoordinadores(coord || []);
+      setCoordinadores((coord || []).map(normalizeCoordinador));
       setReady(true);
     })();
   }, []);
@@ -882,20 +883,16 @@ function AppShell({ session }) {
   const persistPlaneaciones = useCallback((next) => { setPlaneaciones(next); saveKey(KEYS.planeaciones, next); }, []);
   const persistCoordinadores = useCallback((next) => { setCoordinadores(next); saveKey(KEYS.coordinadores, next); }, []);
 
-  const [verTodosPref, setVerTodosPref] = useState(() => {
-    try { return localStorage.getItem("cc_ver_todos") === "1"; } catch { return false; }
-  });
-  const setVerTodos = useCallback((v) => {
-    setVerTodosPref(v);
-    try { localStorage.setItem("cc_ver_todos", v ? "1" : "0"); } catch { /* noop */ }
-  }, []);
   const myCoordinador = coordinadores.find((c) => c.email?.trim().toLowerCase() === session.user.email?.trim().toLowerCase()) || null;
-  const verTodos = verTodosPref || !myCoordinador;
+  const isAdmin = myCoordinador?.role === "admin";
+  const hasAnyAdmin = coordinadores.some((c) => c.role === "admin");
+  const canManageCoordinadores = isAdmin || !hasAnyAdmin;
   const visibleTeacherIds = useMemo(() => {
-    if (verTodos) return new Set(teachers.map((t) => t.id));
-    return new Set(teachers.filter((t) => !t.coordinadorId || t.coordinadorId === myCoordinador.id).map((t) => t.id));
+    if (isAdmin) return new Set(teachers.map((t) => t.id));
+    if (!myCoordinador) return new Set();
+    return new Set(teachers.filter((t) => t.coordinadorId === myCoordinador.id).map((t) => t.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teachers, verTodos, myCoordinador?.id]);
+  }, [teachers, isAdmin, myCoordinador?.id]);
 
   const [obsPrefill, setObsPrefill] = useState(null);
   const goToObservation = useCallback((teacherId) => { setObsPrefill(teacherId); setActive("observacion"); }, []);
@@ -940,7 +937,7 @@ function AppShell({ session }) {
     setCoordinadores: persistCoordinadores, setActive,
     goToObservation, obsPrefill, clearObsPrefill,
     goToObservationRecord, obsViewPrefill, clearObsViewPrefill,
-    myCoordinador, verTodos, setVerTodos, visibleTeacherIds };
+    myCoordinador, isAdmin, canManageCoordinadores, visibleTeacherIds };
 
   return (
     <div ref={rootRef} className="cc-root" style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.ink }}>
@@ -955,17 +952,17 @@ function AppShell({ session }) {
               <div style={{ fontSize: 11.5, color: T.sidebarTextMuted, marginTop: 1 }}>Sec. Técnica No. 84</div>
             </div>
           </div>
-          {myCoordinador ? (
-            <div style={{ padding: "0 8px" }}>
-              <div style={{ fontSize: 10.5, color: T.sidebarTextMuted, marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.4 }}>{myCoordinador.nombre}</div>
-              <div style={{ display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: 2, gap: 2 }}>
-                <button onClick={() => setVerTodos(false)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: !verTodos ? T.blue : "transparent", color: !verTodos ? "#fff" : T.sidebarTextMuted }}>Mis docentes</button>
-                <button onClick={() => setVerTodos(true)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: verTodos ? T.blue : "transparent", color: verTodos ? "#fff" : T.sidebarTextMuted }}>Ver todos</button>
-              </div>
+          {isAdmin ? (
+            <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px", display: "flex", alignItems: "center", gap: 6 }}>
+              <Badge tone="blue">Administrador</Badge> acceso a todo
+            </div>
+          ) : myCoordinador ? (
+            <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px" }}>
+              Viendo solo tus docentes · <strong style={{ color: "#fff" }}>{myCoordinador.nombre}</strong>
             </div>
           ) : (
             <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px" }}>
-              Regístrate en "Coordinadores" para filtrar tus docentes.
+              Tu cuenta no está registrada como coordinador. Pide al administrador que te registre en "Coordinadores".
             </div>
           )}
           <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1005,10 +1002,9 @@ function AppShell({ session }) {
             </button>
           </div>
         )}
-        {isMobile && myCoordinador && (
-          <div className="no-print" style={{ display: "flex", background: T.fill, borderRadius: 8, padding: 2, gap: 2, margin: "10px 16px 0" }}>
-            <button onClick={() => setVerTodos(false)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: !verTodos ? T.blue : "transparent", color: !verTodos ? "#fff" : T.inkSoft }}>Mis docentes</button>
-            <button onClick={() => setVerTodos(true)} className="cc-tap" style={{ flex: 1, border: "none", borderRadius: 6, padding: "6px 4px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: verTodos ? T.blue : "transparent", color: verTodos ? "#fff" : T.inkSoft }}>Ver todos</button>
+        {isMobile && !isAdmin && (
+          <div className="no-print" style={{ fontSize: 11.5, color: T.inkFaint, margin: "10px 16px 0" }}>
+            {myCoordinador ? <>Viendo solo tus docentes · <strong style={{ color: T.ink }}>{myCoordinador.nombre}</strong></> : "Tu cuenta no está registrada como coordinador. Pide al administrador que te registre."}
           </div>
         )}
         <div style={{ flex: 1, padding: isMobile ? "18px 16px 90px" : "26px 32px", overflow: "auto" }}>
@@ -1972,7 +1968,7 @@ function EvaluacionesModule({ evalPeriods, setEvalPeriods, isMobile }) {
 const CSV_TEMPLATE = "Nombre,Disciplina,Telefono,Correo\nJuan Pérez López,Matemáticas,4491234567,juan.perez@sec84.edu.mx\n";
 
 function DocentesModule(props) {
-  const { teachers, setTeachers, visits, setVisits, observations, setObservations, incidencias, setIncidencias, planeaciones, setPlaneaciones, isMobile, coordinadores, myCoordinador, visibleTeacherIds } = props;
+  const { teachers, setTeachers, visits, setVisits, observations, setObservations, incidencias, setIncidencias, planeaciones, setPlaneaciones, isMobile, coordinadores, myCoordinador, isAdmin, visibleTeacherIds } = props;
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -2034,6 +2030,7 @@ function DocentesModule(props) {
   const confirmImport = () => {
     const nuevos = importRows.filter((r) => r.status === "nueva").map((r) => normalizeTeacher({
       id: uid("t"), name: r.name, disciplina: r.disciplina, telefono: r.telefono, correo: r.correo, notas: "",
+      coordinadorId: isAdmin ? null : (myCoordinador?.id || null),
     }));
     if (nuevos.length) {
       setTeachers([...teachers, ...nuevos]);
@@ -2053,7 +2050,7 @@ function DocentesModule(props) {
       <ScreenHeader title="Docentes" subtitle={`${visibleTeachers.length} registrados`}
         action={<div style={{ display: "flex", gap: 8 }}>
           <Btn kind="tinted" size="sm" onClick={() => csvInputRef.current?.click()}><Upload size={14} /> Importar CSV</Btn>
-          <Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("t"), name: "", disciplina: "", telefono: "", correo: "", notas: "", coordinadorId: myCoordinador?.id || null })}><Plus size={14} /> Agregar</Btn>
+          <Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("t"), name: "", disciplina: "", telefono: "", correo: "", notas: "", coordinadorId: isAdmin ? null : (myCoordinador?.id || null) })}><Plus size={14} /> Agregar</Btn>
         </div>} />
       <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={handleCsvPick} />
       <div className="no-print" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, background: T.card, borderRadius: 10, padding: "9px 12px" }}>
@@ -2104,12 +2101,16 @@ function DocentesModule(props) {
             <Field label="Teléfono"><input style={inputStyle} value={editing.telefono} onChange={(e) => setEditing({ ...editing, telefono: e.target.value })} /></Field>
             <Field label="Correo"><input style={inputStyle} value={editing.correo} onChange={(e) => setEditing({ ...editing, correo: e.target.value })} /></Field>
           </div>
-          <Field label="Coordinador(a) responsable">
-            <select style={inputStyle} value={editing.coordinadorId || ""} onChange={(e) => setEditing({ ...editing, coordinadorId: e.target.value || null })}>
-              <option value="">Sin asignar (visible para todos)</option>
-              {coordinadores.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
-          </Field>
+          {isAdmin ? (
+            <Field label="Coordinador(a) responsable">
+              <select style={inputStyle} value={editing.coordinadorId || ""} onChange={(e) => setEditing({ ...editing, coordinadorId: e.target.value || null })}>
+                <option value="">Sin asignar (visible solo para el administrador)</option>
+                {coordinadores.filter((c) => c.role !== "admin").map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </Field>
+          ) : (
+            <div style={{ fontSize: 11.5, color: T.inkFaint }}>Este docente quedará asignado a ti: <strong>{myCoordinador?.nombre}</strong>.</div>
+          )}
         </Sheet>
       )}
 
@@ -2175,7 +2176,7 @@ function TeacherAvatar({ path, uploading, onPick, onRemove }) {
   );
 }
 
-function TeacherExpediente({ teacher, teachers, visits, observations, incidencias, planeaciones, session, isMobile, onBack, setActive, goToObservationRecord, setTeachers, coordinadores }) {
+function TeacherExpediente({ teacher, teachers, visits, observations, incidencias, planeaciones, session, isMobile, onBack, setActive, goToObservationRecord, setTeachers, coordinadores, isAdmin }) {
   const updateTeacher = (patch) => setTeachers(teachers.map((t) => (t.id === teacher.id ? { ...t, ...patch } : t)));
 
   const [editingBasics, setEditingBasics] = useState(null);
@@ -2279,12 +2280,18 @@ function TeacherExpediente({ teacher, teachers, visits, observations, incidencia
             <Field label="Teléfono"><input style={inputStyle} value={editingBasics.telefono} onChange={(e) => setEditingBasics({ ...editingBasics, telefono: e.target.value })} /></Field>
             <Field label="Correo"><input style={inputStyle} value={editingBasics.correo} onChange={(e) => setEditingBasics({ ...editingBasics, correo: e.target.value })} /></Field>
           </div>
-          <Field label="Coordinador(a) responsable">
-            <select style={inputStyle} value={editingBasics.coordinadorId || ""} onChange={(e) => setEditingBasics({ ...editingBasics, coordinadorId: e.target.value || null })}>
-              <option value="">Sin asignar (visible para todos)</option>
-              {coordinadores.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
-          </Field>
+          {isAdmin ? (
+            <Field label="Coordinador(a) responsable">
+              <select style={inputStyle} value={editingBasics.coordinadorId || ""} onChange={(e) => setEditingBasics({ ...editingBasics, coordinadorId: e.target.value || null })}>
+                <option value="">Sin asignar (visible solo para el administrador)</option>
+                {coordinadores.filter((c) => c.role !== "admin").map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </Field>
+          ) : (
+            <div style={{ fontSize: 11.5, color: T.inkFaint }}>
+              Coordinador(a) responsable: <strong>{coordinadores.find((c) => c.id === editingBasics.coordinadorId)?.nombre || "sin asignar"}</strong> · solo el administrador puede reasignarlo.
+            </div>
+          )}
 
           <div style={{ fontWeight: 700, fontSize: 13, color: T.blue, marginTop: 4 }}>Datos personales</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -2959,37 +2966,47 @@ function CteModule({ cte, setCte, isMobile, teachers }) {
 }
 
 /* ============================== COORDINADORES MODULE ============================== */
-function CoordinadoresModule({ coordinadores, setCoordinadores, teachers, isMobile, myCoordinador }) {
+function CoordinadoresModule({ coordinadores, setCoordinadores, teachers, isMobile, myCoordinador, canManageCoordinadores }) {
   const [editing, setEditing] = useState(null);
 
   const save = () => {
     if (!editing.nombre || !editing.email) return;
     const exists = coordinadores.some((c) => c.id === editing.id);
     const email = editing.email.trim().toLowerCase();
+    const role = editing.role === "admin" ? "admin" : "coordinador";
     setCoordinadores(exists
-      ? coordinadores.map((c) => (c.id === editing.id ? { ...editing, email } : c))
-      : [...coordinadores, { ...editing, email }]);
+      ? coordinadores.map((c) => (c.id === editing.id ? { ...editing, email, role } : c))
+      : [...coordinadores, { ...editing, email, role }]);
     setEditing(null);
   };
   const remove = (id) => {
-    if (!confirm("¿Eliminar este coordinador? Los docentes que tenía asignados quedarán sin asignar (visibles para todos).")) return;
+    if (!confirm("¿Eliminar este coordinador? Los docentes que tenía asignados quedarán sin asignar (solo visibles para el administrador hasta reasignarlos).")) return;
     setCoordinadores(coordinadores.filter((c) => c.id !== id));
   };
   const teacherCount = (id) => teachers.filter((t) => t.coordinadorId === id).length;
+  const roleLabel = (c) => c.role === "admin" ? "Administrador" : "Coordinador(a)";
+  const roleTone = (c) => c.role === "admin" ? "blue" : "neutral";
 
   return (
     <div>
       <ScreenHeader title="Coordinadores" subtitle="Gestiona quién ve y gestiona a cada docente"
-        action={<Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("co"), nombre: "", email: "" })}><Plus size={14} /> Agregar</Btn>} />
+        action={canManageCoordinadores && <Btn kind="filled" size="sm" onClick={() => setEditing({ id: uid("co"), nombre: "", email: "", role: "coordinador" })}><Plus size={14} /> Agregar</Btn>} />
 
       <div className="no-print" style={{ fontSize: 12, color: T.inkFaint, marginBottom: 14 }}>
-        Registra aquí a cada coordinador con el correo que usa para iniciar sesión. Al asignar docentes a un coordinador en el módulo de Docentes, ese coordinador verá solo a sus docentes (con la opción de "Ver todos"). CTE y Evaluaciones siempre se comparten entre todos.
+        Cada coordinador solo ve y gestiona a los docentes que tiene asignados (con sus visitas, observaciones, planeaciones e incidencias). El administrador tiene acceso a todo. CTE y Evaluaciones siempre se comparten entre todos.
+        {!canManageCoordinadores && " Solo el administrador puede agregar, editar o eliminar coordinadores."}
       </div>
 
       {editing && (
         <Sheet title={coordinadores.some((c) => c.id === editing.id) ? "Editar coordinador" : "Nuevo coordinador"} onClose={() => setEditing(null)} onSave={save} saveDisabled={!editing.nombre || !editing.email} isMobile={isMobile}>
           <Field label="Nombre completo"><input style={inputStyle} value={editing.nombre} onChange={(e) => setEditing({ ...editing, nombre: e.target.value })} /></Field>
           <Field label="Correo (el mismo con el que inicia sesión)"><input type="email" style={inputStyle} value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></Field>
+          <Field label="Rol">
+            <select style={inputStyle} value={editing.role || "coordinador"} onChange={(e) => setEditing({ ...editing, role: e.target.value })}>
+              <option value="coordinador">Coordinador(a) — ve solo a sus docentes</option>
+              <option value="admin">Administrador — ve y gestiona todo</option>
+            </select>
+          </Field>
         </Sheet>
       )}
 
@@ -3000,17 +3017,20 @@ function CoordinadoresModule({ coordinadores, setCoordinadores, teachers, isMobi
           {coordinadores.map((c, idx) => (
             <Row key={c.id} last={idx === coordinadores.length - 1}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {c.nombre}
-                  {myCoordinador?.id === c.id && <Badge tone="blue">Tú</Badge>}
+                  {myCoordinador?.id === c.id && <Badge tone="green">Tú</Badge>}
+                  <Badge tone={roleTone(c)}>{roleLabel(c)}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 2 }}>{c.email}</div>
               </div>
               <Badge tone="purple">{teacherCount(c.id)} docente{teacherCount(c.id) === 1 ? "" : "s"}</Badge>
-              <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                <IconBtn icon={Pencil} size={28} onClick={() => setEditing(c)} />
-                <IconBtn icon={Trash2} size={28} tone="red" onClick={() => remove(c.id)} />
-              </div>
+              {canManageCoordinadores && (
+                <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <IconBtn icon={Pencil} size={28} onClick={() => setEditing(c)} />
+                  <IconBtn icon={Trash2} size={28} tone="red" onClick={() => remove(c.id)} />
+                </div>
+              )}
             </Row>
           ))}
         </Card>
