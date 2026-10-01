@@ -953,8 +953,9 @@ function AppShell({ session }) {
             </div>
           </div>
           {isAdmin ? (
-            <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px", display: "flex", alignItems: "center", gap: 6 }}>
-              <Badge tone="blue">Administrador</Badge> acceso a todo
+            <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <strong style={{ color: "#fff" }}>{myCoordinador.nombre}</strong>
+              <Badge tone="blue">Administrador</Badge>
             </div>
           ) : myCoordinador ? (
             <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px" }}>
