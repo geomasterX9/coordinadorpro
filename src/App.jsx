@@ -329,6 +329,7 @@ const KEYS = {
   cte: "coordinacion:cte",
   planeaciones: "coordinacion:planeaciones",
   coordinadores: "coordinacion:coordinadores",
+  eventosExtra: "coordinacion:eventosExtra",
 };
 
 async function loadKey(key, fallback) {
@@ -844,10 +845,11 @@ function AppShell({ session }) {
   const [cte, setCte] = useState([]);
   const [planeaciones, setPlaneaciones] = useState([]);
   const [coordinadores, setCoordinadores] = useState([]);
+  const [eventosExtra, setEventosExtra] = useState([]);
 
   useEffect(() => {
     (async () => {
-      const [tch, vis, obs, evp, inc, cteData, plan, coord] = await Promise.all([
+      const [tch, vis, obs, evp, inc, cteData, plan, coord, extra] = await Promise.all([
         loadKey(KEYS.teachers, null),
         loadKey(KEYS.visits, null),
         loadKey(KEYS.observations, []),
@@ -856,6 +858,7 @@ function AppShell({ session }) {
         loadKey(KEYS.cte, null),
         loadKey(KEYS.planeaciones, null),
         loadKey(KEYS.coordinadores, []),
+        loadKey(KEYS.eventosExtra, []),
       ]);
       // null = nunca se guardó (primera vez, usar datos de ejemplo).
       // Un arreglo vacío es una elección deliberada del usuario y debe respetarse.
@@ -870,6 +873,7 @@ function AppShell({ session }) {
       setCte(cteData !== null ? cteData : seedCte());
       setPlaneaciones(finalPlaneaciones);
       setCoordinadores((coord || []).map(normalizeCoordinador));
+      setEventosExtra(extra || []);
       setReady(true);
     })();
   }, []);
@@ -882,6 +886,7 @@ function AppShell({ session }) {
   const persistCte = useCallback((next) => { setCte(next); saveKey(KEYS.cte, next); }, []);
   const persistPlaneaciones = useCallback((next) => { setPlaneaciones(next); saveKey(KEYS.planeaciones, next); }, []);
   const persistCoordinadores = useCallback((next) => { setCoordinadores(next); saveKey(KEYS.coordinadores, next); }, []);
+  const persistEventosExtra = useCallback((next) => { setEventosExtra(next); saveKey(KEYS.eventosExtra, next); }, []);
 
   const myCoordinador = coordinadores.find((c) => c.email?.trim().toLowerCase() === session.user.email?.trim().toLowerCase()) || null;
   const isAdmin = myCoordinador?.role === "admin";
@@ -939,10 +944,10 @@ function AppShell({ session }) {
     );
   }
 
-  const moduleProps = { teachers, visits, observations, evalPeriods, incidencias, cte, planeaciones, coordinadores, teacherName, isMobile, session,
+  const moduleProps = { teachers, visits, observations, evalPeriods, incidencias, cte, planeaciones, coordinadores, eventosExtra, teacherName, isMobile, session,
     setVisits: persistVisits, setObservations: persistObservations, setEvalPeriods: persistEvalPeriods,
     setTeachers: persistTeachers, setIncidencias: persistIncidencias, setCte: persistCte, setPlaneaciones: persistPlaneaciones,
-    setCoordinadores: persistCoordinadores, setActive,
+    setCoordinadores: persistCoordinadores, setEventosExtra: persistEventosExtra, setActive,
     goToObservation, obsPrefill, clearObsPrefill,
     goToObservationRecord, obsViewPrefill, clearObsViewPrefill,
     myCoordinador, isAdmin, canManageCoordinadores, visibleTeacherIds };
@@ -1225,18 +1230,20 @@ const CAL_LEYENDA = [
   { type: "evaluacion", tone: "orange", label: "Evaluaciones" },
   { type: "visita", tone: "green", label: "Visitas" },
   { type: "incidencia", tone: "red", label: "Incidencias" },
+  { type: "extra", tone: "blue", label: "Actividades extra" },
 ];
 const CAL_DIAS = ["D", "L", "M", "M", "J", "V", "S"];
 const CAL_MODULO_POR_TIPO = { cte: "cte", evaluacion: "evaluaciones", visita: "visitas", incidencia: "incidencias" };
-const CAL_ABREV = { cte: "C", evaluacion: "E", visita: "V", incidencia: "I" };
-const CAL_ETIQUETA = { cte: "CTE", evaluacion: "Evaluación", visita: "Visita", incidencia: "Incidencia" };
+const CAL_ABREV = { cte: "C", evaluacion: "E", visita: "V", incidencia: "I", extra: "A" };
+const CAL_ETIQUETA = { cte: "CTE", evaluacion: "Evaluación", visita: "Visita", incidencia: "Incidencia", extra: "Actividad" };
 
-function CalendarioModule({ visits: allVisits, cte, evalPeriods, incidencias: allIncidencias, teacherName, setActive, isMobile, visibleTeacherIds }) {
+function CalendarioModule({ visits: allVisits, cte, evalPeriods, incidencias: allIncidencias, eventosExtra, setEventosExtra, teacherName, setActive, isMobile, visibleTeacherIds }) {
   const visits = allVisits.filter((v) => visibleTeacherIds.has(v.teacherId));
   const incidencias = allIncidencias.map(normalizeIncidencia).filter((i) => i.teacherIds.length === 0 || i.teacherIds.some((id) => visibleTeacherIds.has(id)));
   const today = todayIso();
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
   const [selectedDate, setSelectedDate] = useState(today);
+  const [editing, setEditing] = useState(null);
 
   const events = useMemo(() => {
     const map = {};
@@ -1249,8 +1256,21 @@ function CalendarioModule({ visits: allVisits, cte, evalPeriods, incidencias: al
     });
     visits.filter((v) => v.fecha).forEach((v) => add(v.fecha, { type: "visita", tone: "green", label: `Visita a ${teacherName(v.teacherId)}${v.tipo === "sorpresa" ? " (sorpresa)" : ""}` }));
     incidencias.map(normalizeIncidencia).forEach((i) => add(i.fecha, { type: "incidencia", tone: "red", label: i.descripcion ? i.descripcion.slice(0, 70) : "Incidencia registrada" }));
+    eventosExtra.forEach((ev) => add(ev.fecha, { type: "extra", tone: "blue", label: ev.titulo, id: ev.id, notas: ev.notas }));
     return map;
-  }, [cte, evalPeriods, visits, incidencias, teacherName]);
+  }, [cte, evalPeriods, visits, incidencias, eventosExtra, teacherName]);
+
+  const makeBlank = () => ({ id: uid("ex"), fecha: selectedDate, titulo: "", notas: "" });
+  const saveEvento = () => {
+    if (!editing.titulo || !editing.fecha) return;
+    const exists = eventosExtra.some((e) => e.id === editing.id);
+    setEventosExtra(exists ? eventosExtra.map((e) => (e.id === editing.id ? editing : e)) : [...eventosExtra, editing]);
+    setEditing(null);
+  };
+  const removeEvento = (id) => {
+    if (!confirm("¿Eliminar esta actividad del calendario?")) return;
+    setEventosExtra(eventosExtra.filter((e) => e.id !== id));
+  };
 
   const { year, month } = cursor;
   const monthLabel = new Date(year, month, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
@@ -1274,7 +1294,16 @@ function CalendarioModule({ visits: allVisits, cte, evalPeriods, incidencias: al
 
   return (
     <div>
-      <ScreenHeader title="Calendario" subtitle="Visitas, CTE, evaluaciones e incidencias en un solo lugar" />
+      <ScreenHeader title="Calendario" subtitle="Visitas, CTE, evaluaciones e incidencias en un solo lugar"
+        action={<Btn kind="filled" size="sm" onClick={() => setEditing(makeBlank())}><Plus size={14} /> Agregar actividad</Btn>} />
+
+      {editing && (
+        <Sheet title={eventosExtra.some((e) => e.id === editing.id) ? "Editar actividad" : "Nueva actividad"} onClose={() => setEditing(null)} onSave={saveEvento} saveDisabled={!editing.titulo || !editing.fecha} isMobile={isMobile}>
+          <Field label="Título"><input style={inputStyle} value={editing.titulo} onChange={(e) => setEditing({ ...editing, titulo: e.target.value })} /></Field>
+          <Field label="Fecha"><input type="date" style={inputStyle} value={editing.fecha} onChange={(e) => setEditing({ ...editing, fecha: e.target.value })} /></Field>
+          <Field label="Notas (opcional)"><textarea style={{ ...inputStyle, minHeight: 70 }} value={editing.notas} onChange={(e) => setEditing({ ...editing, notas: e.target.value })} /></Field>
+        </Sheet>
+      )}
 
       <div className="no-print" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
         {CAL_LEYENDA.map((l) => (
@@ -1337,10 +1366,20 @@ function CalendarioModule({ visits: allVisits, cte, evalPeriods, incidencias: al
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {selectedEvents.map((ev, idx) => (
-              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                 <Badge tone={ev.tone}>{CAL_ETIQUETA[ev.type]}</Badge>
-                <div style={{ flex: 1, minWidth: 120, fontSize: 13.5 }}>{ev.label}</div>
-                <button className="no-print" onClick={() => setActive(CAL_MODULO_POR_TIPO[ev.type])} style={{ background: "none", border: "none", color: T.blue, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Ver →</button>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <div style={{ fontSize: 13.5 }}>{ev.label}</div>
+                  {ev.notas && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}>{ev.notas}</div>}
+                </div>
+                {ev.type === "extra" ? (
+                  <div className="no-print" style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <IconBtn icon={Pencil} size={26} onClick={() => setEditing(eventosExtra.find((e) => e.id === ev.id))} />
+                    <IconBtn icon={Trash2} size={26} tone="red" onClick={() => removeEvento(ev.id)} />
+                  </div>
+                ) : (
+                  <button className="no-print" onClick={() => setActive(CAL_MODULO_POR_TIPO[ev.type])} style={{ background: "none", border: "none", color: T.blue, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Ver →</button>
+                )}
               </div>
             ))}
           </div>
