@@ -884,15 +884,21 @@ function AppShell({ session }) {
   const persistCoordinadores = useCallback((next) => { setCoordinadores(next); saveKey(KEYS.coordinadores, next); }, []);
 
   const myCoordinador = coordinadores.find((c) => c.email?.trim().toLowerCase() === session.user.email?.trim().toLowerCase()) || null;
-  const isAdmin = myCoordinador?.role === "admin";
+  const realIsAdmin = myCoordinador?.role === "admin";
   const hasAnyAdmin = coordinadores.some((c) => c.role === "admin");
-  const canManageCoordinadores = isAdmin || !hasAnyAdmin;
+  const canManageCoordinadores = realIsAdmin || !hasAnyAdmin;
+
+  const [previewCoordinadorId, setPreviewCoordinadorId] = useState(null);
+  const previewCoordinador = (realIsAdmin && coordinadores.find((c) => c.id === previewCoordinadorId)) || null;
+  const effectiveCoordinador = previewCoordinador || myCoordinador;
+  const isAdmin = realIsAdmin && !previewCoordinador;
+
   const visibleTeacherIds = useMemo(() => {
     if (isAdmin) return new Set(teachers.map((t) => t.id));
-    if (!myCoordinador) return new Set();
-    return new Set(teachers.filter((t) => t.coordinadorId === myCoordinador.id).map((t) => t.id));
+    if (!effectiveCoordinador) return new Set();
+    return new Set(teachers.filter((t) => t.coordinadorId === effectiveCoordinador.id).map((t) => t.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teachers, isAdmin, myCoordinador?.id]);
+  }, [teachers, isAdmin, effectiveCoordinador?.id]);
 
   const [obsPrefill, setObsPrefill] = useState(null);
   const goToObservation = useCallback((teacherId) => { setObsPrefill(teacherId); setActive("observacion"); }, []);
@@ -937,7 +943,7 @@ function AppShell({ session }) {
     setCoordinadores: persistCoordinadores, setActive,
     goToObservation, obsPrefill, clearObsPrefill,
     goToObservationRecord, obsViewPrefill, clearObsViewPrefill,
-    myCoordinador, isAdmin, canManageCoordinadores, visibleTeacherIds };
+    myCoordinador: effectiveCoordinador, isAdmin, canManageCoordinadores, visibleTeacherIds };
 
   return (
     <div ref={rootRef} className="cc-root" style={{ display: "flex", minHeight: "100vh", background: T.bg, color: T.ink }}>
@@ -952,10 +958,19 @@ function AppShell({ session }) {
               <div style={{ fontSize: 11.5, color: T.sidebarTextMuted, marginTop: 1 }}>Sec. Técnica No. 84</div>
             </div>
           </div>
-          {isAdmin ? (
-            <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <strong style={{ color: "#fff" }}>{myCoordinador.nombre}</strong>
-              <Badge tone="blue">Administrador</Badge>
+          {realIsAdmin ? (
+            <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 11, color: T.sidebarTextMuted, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <strong style={{ color: "#fff" }}>{myCoordinador.nombre}</strong>
+                <Badge tone="blue">Administrador</Badge>
+              </div>
+              <select value={previewCoordinadorId || ""} onChange={(e) => setPreviewCoordinadorId(e.target.value || null)} style={{
+                fontSize: 11.5, fontWeight: 600, borderRadius: 6, border: "none", padding: "5px 6px", cursor: "pointer",
+                background: previewCoordinador ? T.orange : "rgba(255,255,255,0.08)", color: previewCoordinador ? "#fff" : T.sidebarTextMuted,
+              }}>
+                <option value="">Ver todo (administrador)</option>
+                {coordinadores.filter((c) => c.role !== "admin").map((c) => <option key={c.id} value={c.id}>Ver como {c.nombre}</option>)}
+              </select>
             </div>
           ) : myCoordinador ? (
             <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px" }}>
@@ -1003,9 +1018,26 @@ function AppShell({ session }) {
             </button>
           </div>
         )}
-        {isMobile && !isAdmin && (
+        {isMobile && realIsAdmin && (
+          <div className="no-print" style={{ margin: "10px 16px 0" }}>
+            <select value={previewCoordinadorId || ""} onChange={(e) => setPreviewCoordinadorId(e.target.value || null)} style={{
+              width: "100%", fontSize: 12.5, fontWeight: 600, borderRadius: 8, border: `1px solid ${T.separator}`, padding: "7px 8px", cursor: "pointer",
+              background: previewCoordinador ? T.orangeTint : T.fill, color: previewCoordinador ? T.orange : T.inkSoft,
+            }}>
+              <option value="">Ver todo (administrador)</option>
+              {coordinadores.filter((c) => c.role !== "admin").map((c) => <option key={c.id} value={c.id}>Ver como {c.nombre}</option>)}
+            </select>
+          </div>
+        )}
+        {isMobile && !realIsAdmin && (
           <div className="no-print" style={{ fontSize: 11.5, color: T.inkFaint, margin: "10px 16px 0" }}>
             {myCoordinador ? <strong style={{ color: T.ink }}>{myCoordinador.nombre}</strong> : "Tu cuenta no está registrada como coordinador. Pide al administrador que te registre."}
+          </div>
+        )}
+        {previewCoordinador && (
+          <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 16px", background: T.orangeTint, borderBottom: `1px solid oklch(60% 0.15 55 / 0.3)` }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: T.orange }}>Vista previa: viendo la app como {previewCoordinador.nombre}</span>
+            <Btn kind="tinted" size="sm" onClick={() => setPreviewCoordinadorId(null)}>Salir de vista previa</Btn>
           </div>
         )}
         <div style={{ flex: 1, padding: isMobile ? "18px 16px 90px" : "26px 32px", overflow: "auto" }}>
