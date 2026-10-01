@@ -958,7 +958,7 @@ function AppShell({ session }) {
             </div>
           ) : myCoordinador ? (
             <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px" }}>
-              Viendo solo tus docentes · <strong style={{ color: "#fff" }}>{myCoordinador.nombre}</strong>
+              <strong style={{ color: "#fff" }}>{myCoordinador.nombre}</strong>
             </div>
           ) : (
             <div style={{ fontSize: 11, color: T.sidebarTextMuted, padding: "0 8px" }}>
@@ -1004,7 +1004,7 @@ function AppShell({ session }) {
         )}
         {isMobile && !isAdmin && (
           <div className="no-print" style={{ fontSize: 11.5, color: T.inkFaint, margin: "10px 16px 0" }}>
-            {myCoordinador ? <>Viendo solo tus docentes · <strong style={{ color: T.ink }}>{myCoordinador.nombre}</strong></> : "Tu cuenta no está registrada como coordinador. Pide al administrador que te registre."}
+            {myCoordinador ? <strong style={{ color: T.ink }}>{myCoordinador.nombre}</strong> : "Tu cuenta no está registrada como coordinador. Pide al administrador que te registre."}
           </div>
         )}
         <div style={{ flex: 1, padding: isMobile ? "18px 16px 90px" : "26px 32px", overflow: "auto" }}>
