@@ -330,6 +330,7 @@ const KEYS = {
   planeaciones: "coordinacion:planeaciones",
   coordinadores: "coordinacion:coordinadores",
   eventosExtra: "coordinacion:eventosExtra",
+  horarios: "coordinacion:horarios",
 };
 
 async function loadKey(key, fallback) {
@@ -920,6 +921,7 @@ function AppShell({ session }) {
 
   const nav = [
     { id: "dashboard", label: "Inicio", icon: LayoutGrid },
+    { id: "horarios", label: "Horarios", icon: Clock },
     { id: "calendario", label: "Calendario", icon: Calendar },
     { id: "visitas", label: "Visitas", icon: CalendarCheck },
     { id: "observacion", label: "Observación", icon: ClipboardCheck },
@@ -930,7 +932,7 @@ function AppShell({ session }) {
     { id: "cte", label: "CTE", icon: BookOpenCheck },
     { id: "coordinadores", label: "Coordinadores", icon: UserCog },
   ];
-  const MOBILE_PRIMARY_IDS = ["dashboard", "visitas", "observacion", "docentes"];
+  const MOBILE_PRIMARY_IDS = ["dashboard", "horarios", "visitas", "observacion", "docentes"];
   const mobilePrimaryNav = MOBILE_PRIMARY_IDS.map((id) => nav.find((n) => n.id === id));
   const mobileMoreNav = nav.filter((n) => !MOBILE_PRIMARY_IDS.includes(n.id));
   const isInMoreSection = mobileMoreNav.some((n) => n.id === active);
@@ -1059,6 +1061,7 @@ function AppShell({ session }) {
           {active === "incidencias" && <IncidenciasModule {...moduleProps} />}
           {active === "cte" && <CteModule {...moduleProps} teachers={teachers} />}
           {active === "calendario" && <CalendarioModule {...moduleProps} />}
+          {active === "horarios" && <HorariosModule {...moduleProps} />}
           {active === "coordinadores" && <CoordinadoresModule {...moduleProps} />}
         </div>
       </div>
@@ -3111,6 +3114,477 @@ function CoordinadoresModule({ coordinadores, setCoordinadores, teachers, isMobi
           ))}
         </Card>
       )}
+    </div>
+  );
+}
+
+/* ============================== HORARIOS MODULE ============================== */
+// El horario se importa desde el XML que exporta aSc Timetables y se guarda ya
+// procesado (JSON compacto) en app_data bajo KEYS.horarios.
+const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const DIAS_CORTOS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
+
+function toMin(hhmm) {
+  const [h, m] = String(hhmm || "").split(":").map(Number);
+  return Number.isFinite(h) ? h * 60 + (m || 0) : null;
+}
+
+async function readAscFile(file) {
+  const buf = await file.arrayBuffer();
+  const head = new TextDecoder("latin1").decode(buf.slice(0, 200));
+  const enc = (head.match(/encoding="([^"]+)"/i) || [])[1] || "utf-8";
+  let text;
+  try { text = new TextDecoder(enc).decode(buf); } catch { text = new TextDecoder("windows-1252").decode(buf); }
+  return parseAscXml(text);
+}
+
+function parseAscXml(text) {
+  const doc = new DOMParser().parseFromString(text, "text/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("El archivo no es un XML válido.");
+  if (!doc.getElementsByTagName("timetable").length) throw new Error("El archivo no parece una exportación de aSc Timetables.");
+  const all = (tag) => Array.from(doc.getElementsByTagName(tag));
+  const attr = (el, a) => (el.getAttribute(a) || "").trim();
+
+  const periodos = all("period").map((p) => ({ n: Number(attr(p, "period")), ini: attr(p, "starttime"), fin: attr(p, "endtime") }))
+    .filter((p) => p.n).sort((a, b) => a.n - b.n);
+  const docentes = all("teacher").map((t) => ({ id: attr(t, "id"), nombre: attr(t, "name"), corto: attr(t, "short") }));
+  const materias = all("subject").map((s) => ({ id: attr(s, "id"), nombre: attr(s, "name"), corto: attr(s, "short") }));
+  const grupos = all("class").map((c) => ({ id: attr(c, "id"), nombre: attr(c, "name"), tutor: attr(c, "teacherid") }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { numeric: true }));
+  const subgrupo = {};
+  all("group").forEach((g) => { if (attr(g, "entireclass") !== "1" && attr(g, "name") !== "La clase entera") subgrupo[attr(g, "id")] = attr(g, "name"); });
+  const lecciones = {};
+  all("lesson").forEach((l) => { lecciones[attr(l, "id")] = l; });
+
+  const nDias = Math.max(5, ...all("card").map((c) => attr(c, "days").length));
+  const sesiones = [];
+  all("card").forEach((c) => {
+    const l = lecciones[attr(c, "lessonid")];
+    if (!l) return;
+    const p0 = Number(attr(c, "period"));
+    const largo = Math.max(1, Math.round(Number(attr(l, "periodspercard")) || 1));
+    const clases = attr(l, "classids").split(",").filter(Boolean);
+    const profes = attr(l, "teacherids").split(",").filter(Boolean);
+    const sub = attr(l, "groupids").split(",").map((g) => subgrupo[g]).filter(Boolean).join(", ");
+    attr(c, "days").split("").forEach((bit, d) => {
+      if (bit !== "1") return;
+      for (let k = 0; k < largo; k++) {
+        sesiones.push({ d, p: p0 + k, g: clases, t: profes, m: attr(l, "subjectid"), ...(sub ? { sub } : {}) });
+      }
+    });
+  });
+  if (!sesiones.length) throw new Error("El XML no tiene clases colocadas (tarjetas).");
+  return { periodos, docentes, materias, grupos, sesiones, dias: Math.min(nDias, 7) };
+}
+
+// Color fijo por campo de materia (misma materia = mismo color en todos los grados)
+const MATERIA_COLORES = [
+  [/ESPA/, 330], [/MATEM/, 250], [/BIOLOG|FISICA\)|QUIMICA|CIENCIAS/, 155], [/INGL/, 20], [/GEOGRAF/, 115],
+  [/HISTORIA/, 60], [/CIVICA|FCYE/, 85], [/ARTES/, 300], [/EDUCACION FISICA|ED FISICA/, 185],
+  [/TECNOLOG/, 225], [/TUTOR/, 275], [/INTEGRACION/, 35], [/COMISION/, 0],
+];
+function tonoMateria(nombre) {
+  const n = (nombre || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const hit = MATERIA_COLORES.find(([re]) => re.test(n));
+  if (!hit) return ["oklch(55% 0.02 260)", "oklch(55% 0.02 260 / 0.10)"];
+  const h = hit[1], c = h === 0 ? 0.01 : 0.13;
+  return [`oklch(56% ${c} ${h})`, `oklch(62% ${c} ${h} / 0.13)`];
+}
+// aSc suele guardar los nombres sin acentos; se corrigen solo para mostrar
+const ACENTOS = [
+  ["Matematicas", "Matemáticas"], ["Tecnologia", "Tecnología"], ["Educacion Fisica", "Educación Física"], ["Ed Fisica", "Ed. Física"],
+  ["Formacion Civica y Etica", "Formación Cívica y Ética"], ["Integracion", "Integración"], ["Biologia", "Biología"],
+  ["(Fisica)", "(Física)"], ["Quimica", "Química"], ["Geografia", "Geografía"], ["Tutoria", "Tutoría"], ["Ingles", "Inglés"], ["Fisica", "Física"], ["Fcye", "FCyE"],
+];
+function acentuar(s) { return ACENTOS.reduce((t, [a, b]) => t.split(a).join(b), s || ""); }
+function titleCase(s) {
+  return (s || "").toLowerCase()
+    .replace(/(^|[\s(])([a-záéíóúñü])/g, (m, a, b) => a + b.toUpperCase())
+    .replace(/ (De|Del|La|Las|Los|Y|E)(?= )/g, (w) => w.toLowerCase());
+}
+
+function useReloj() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(id); }, []);
+  return now;
+}
+
+function leerPref(k, def) { try { return localStorage.getItem("horarios:" + k) || def; } catch { return def; } }
+function guardarPref(k, v) { try { localStorage.setItem("horarios:" + k, v); } catch { /* sin almacenamiento */ } }
+
+function HorariosModule({ isMobile, canManageCoordinadores, session }) {
+  const [horario, setHorario] = useState(undefined); // undefined = cargando, null = sin horario
+  const [vista, setVista] = useState(() => leerPref("vista", "ahora"));
+  const [grupoSel, setGrupoSel] = useState(() => leerPref("grupo", ""));
+  const [docenteSel, setDocenteSel] = useState(() => leerPref("docente", ""));
+  const [subiendo, setSubiendo] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const fileRef = useRef(null);
+  const now = useReloj();
+
+  useEffect(() => { loadKey(KEYS.horarios, null).then(setHorario); }, []);
+  useEffect(() => guardarPref("vista", vista), [vista]);
+  useEffect(() => { if (grupoSel) guardarPref("grupo", grupoSel); }, [grupoSel]);
+  useEffect(() => { if (docenteSel) guardarPref("docente", docenteSel); }, [docenteSel]);
+
+  const idx = useMemo(() => {
+    if (!horario) return null;
+    const doc = Object.fromEntries(horario.docentes.map((t) => [t.id, t]));
+    const mat = Object.fromEntries(horario.materias.map((s) => [s.id, s]));
+    const gru = Object.fromEntries(horario.grupos.map((g) => [g.id, g]));
+    const porGrupo = {}, porDocente = {};
+    for (const s of horario.sesiones) {
+      for (const g of s.g) ((porGrupo[g] ||= {})[`${s.d}-${s.p}`] ||= []).push(s);
+      for (const t of s.t) ((porDocente[t] ||= {})[`${s.d}-${s.p}`] ||= []).push(s);
+    }
+    const docentesOrden = horario.docentes.filter((t) => porDocente[t.id]).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    return { doc, mat, gru, porGrupo, porDocente, docentesOrden };
+  }, [horario]);
+
+  // Día y módulo actuales según el reloj del dispositivo
+  const dow = (now.getDay() + 6) % 7; // 0 = lunes
+  const minAhora = now.getHours() * 60 + now.getMinutes();
+  const nDias = horario?.dias || 5;
+  const esDiaEscolar = dow < nDias;
+  const periodos = horario?.periodos || [];
+  const moduloActual = esDiaEscolar ? periodos.find((p) => toMin(p.ini) <= minAhora && minAhora < toMin(p.fin)) || null : null;
+
+  const [dia, setDia] = useState(esDiaEscolar ? dow : 0);
+  const [ahoraSel, setAhoraSel] = useState(null);
+
+  // Módulo que muestra "Ahora": el que está en curso o, si no hay, el siguiente
+  let sugerido = { d: 0, p: periodos[0]?.n || 1, tipo: "proximo-dia" };
+  if (periodos.length) {
+    if (moduloActual) sugerido = { d: dow, p: moduloActual.n, tipo: "en-curso" };
+    else if (esDiaEscolar && periodos.some((p) => toMin(p.ini) > minAhora)) {
+      const sig = periodos.find((p) => toMin(p.ini) > minAhora);
+      sugerido = { d: dow, p: sig.n, tipo: minAhora < toMin(periodos[0].ini) ? "primero-hoy" : "siguiente" };
+    } else sugerido = { d: esDiaEscolar && dow + 1 < nDias ? dow + 1 : 0, p: periodos[0].n, tipo: "proximo-dia" };
+  }
+  const enfoque = ahoraSel || sugerido;
+
+  const subirXml = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setSubiendo(true); setMsg(null);
+    try {
+      const data = await readAscFile(file);
+      const value = { ...data, archivo: file.name, cargado: new Date().toISOString(), cargadoPor: session?.user?.email || "" };
+      await saveKey(KEYS.horarios, value);
+      const check = await loadKey(KEYS.horarios, null);
+      if (!check || check.cargado !== value.cargado) throw new Error("No se pudo guardar en la base de datos. Revisa tu conexión e intenta de nuevo.");
+      setHorario(value); setAhoraSel(null);
+      setMsg({ tone: "green", text: `Horario cargado: ${data.grupos.length} grupos, ${data.docentes.length} docentes, ${data.sesiones.length} sesiones.` });
+    } catch (err) {
+      setMsg({ tone: "red", text: err.message || String(err) });
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const cargarBtn = canManageCoordinadores ? (
+    <>
+      <input ref={fileRef} type="file" accept=".xml,text/xml,application/xml" onChange={subirXml} style={{ display: "none" }} />
+      <Btn kind={horario ? "tinted" : "filled"} size="sm" onClick={() => fileRef.current?.click()} disabled={subiendo}>
+        <Upload size={15} /> {subiendo ? "Cargando…" : horario ? "Actualizar XML" : "Cargar XML de aSc"}
+      </Btn>
+    </>
+  ) : null;
+
+  if (horario === undefined) return <EmptyHint text="Cargando horarios…" icon={Clock} />;
+
+  const aviso = msg && (
+    <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 8, fontSize: 13.5, fontWeight: 600,
+      background: msg.tone === "red" ? T.redTint : T.greenTint, color: msg.tone === "red" ? T.red : T.blueDark }}>{msg.text}</div>
+  );
+
+  if (!horario) {
+    return (
+      <div>
+        <ScreenHeader title="Horarios" subtitle="Ciclo escolar 2026–2027" action={cargarBtn} />
+        {aviso}
+        <Card><EmptyHint icon={Clock} text={canManageCoordinadores
+          ? "Aún no hay horario. Exporta el horario desde aSc Timetables en formato XML y cárgalo con el botón de arriba."
+          : "Aún no hay horario cargado. El administrador debe cargarlo."} /></Card>
+      </div>
+    );
+  }
+
+  const { doc, mat, gru, porGrupo, porDocente, docentesOrden } = idx;
+  const nombreDoc = (id) => titleCase(doc[id]?.nombre || "—");
+  const nombreMat = (id) => acentuar(titleCase(mat[id]?.nombre || "—"));
+  const fmtP = (p) => (p ? `${p.ini}–${p.fin}` : "");
+  const periodo = (n) => periodos.find((p) => p.n === n);
+  const grupoActivo = gru[grupoSel] ? grupoSel : horario.grupos[0]?.id;
+  const docenteActivo = porDocente[docenteSel] ? docenteSel : docentesOrden[0]?.id;
+  const recesoAntes = (i) => i > 0 && toMin(periodos[i].ini) > toMin(periodos[i - 1].fin);
+  const esAhora = (d, n) => esDiaEscolar && d === dow && moduloActual?.n === n;
+
+  // ---------- piezas de UI (funciones que devuelven JSX, no componentes, para no remontar) ----------
+  const diaPicker = () => (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${nDias}, 1fr)`, gap: 6, marginBottom: 12 }}>
+      {Array.from({ length: nDias }, (_, d) => {
+        const act = d === dia;
+        const hoy = esDiaEscolar && d === dow;
+        return (
+          <button key={d} onClick={() => setDia(d)} className="cc-tap" style={{
+            border: `1px solid ${act ? T.blue : T.separator}`, background: act ? T.blue : T.card, color: act ? "#fff" : T.ink,
+            borderRadius: 10, padding: "9px 0 6px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+          }}>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>{DIAS_CORTOS[d]}</span>
+            <span style={{ fontSize: 9.5, fontWeight: 700, height: 12, letterSpacing: 0.5, color: act ? "rgba(255,255,255,0.9)" : T.blue }}>{hoy ? "HOY" : ""}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const clase = (s, modo, compact, key) => {
+    const m = mat[s.m];
+    const [fg, bg] = tonoMateria(m?.nombre);
+    const detalle = modo === "grupo"
+      ? s.t.map(nombreDoc).join(", ")
+      : s.g.length ? s.g.map((g) => gru[g]?.nombre).join(", ") + (s.sub ? ` · ${s.sub}` : "") : "Sin grupo";
+    return (
+      <div key={key} style={{ background: bg, borderLeft: `4px solid ${fg}`, borderRadius: 8, padding: compact ? "6px 8px" : "8px 11px", minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: compact ? 12.5 : 15, color: T.ink, lineHeight: 1.25, overflowWrap: "anywhere" }}>
+          {compact ? acentuar(titleCase(m?.corto || m?.nombre)) : nombreMat(s.m)}
+        </div>
+        <div style={{ fontSize: compact ? 11.5 : 13, color: T.inkSoft, marginTop: 2, lineHeight: 1.3, overflowWrap: "anywhere" }}>{detalle}</div>
+      </div>
+    );
+  };
+
+  const receso = (desde, hasta) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 4px", color: T.inkFaint, fontSize: 11.5, fontWeight: 700, letterSpacing: 1.2 }}>
+      <div style={{ flex: 1, height: 1, background: T.separator }} />RECESO {desde}–{hasta}<div style={{ flex: 1, height: 1, background: T.separator }} />
+    </div>
+  );
+
+  // Lista del día (celular)
+  const listaDia = (mapa, modo) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {periodos.map((p, i) => {
+        const ss = mapa?.[`${dia}-${p.n}`] || [];
+        const enCurso = esAhora(dia, p.n);
+        return (
+          <React.Fragment key={p.n}>
+            {recesoAntes(i) && receso(periodos[i - 1].fin, p.ini)}
+            <div style={{
+              display: "flex", gap: 10, alignItems: "stretch", padding: 8, borderRadius: 12,
+              background: enCurso ? T.blueTint : T.card, border: `1px solid ${enCurso ? T.blue : T.separator}`,
+            }}>
+              <div style={{ width: 52, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4, color: enCurso ? T.blueDark : T.inkFaint }}>{enCurso ? "AHORA" : `MÓD ${p.n}`}</div>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{p.ini}</div>
+                <div style={{ fontSize: 11.5, color: T.inkFaint, fontVariantNumeric: "tabular-nums" }}>{p.fin}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6, justifyContent: "center" }}>
+                {ss.length ? ss.map((s, k) => clase(s, modo, false, k))
+                  : <div style={{ fontSize: 14, color: T.inkFaint, fontStyle: "italic", padding: "8px 4px" }}>Libre</div>}
+              </div>
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+
+  // Tabla semanal (pantallas grandes)
+  const tablaSemana = (mapa, modo) => (
+    <Card style={{ overflow: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", minWidth: 720 }}>
+        <thead>
+          <tr>
+            <th style={{ width: 92, padding: 10, fontSize: 12, color: T.inkFaint, textAlign: "left", borderBottom: `1px solid ${T.separator}` }}>Módulo</th>
+            {Array.from({ length: nDias }, (_, d) => (
+              <th key={d} style={{ padding: 10, fontSize: 13, textAlign: "left", borderBottom: `1px solid ${T.separator}`, color: esDiaEscolar && d === dow ? T.blueDark : T.ink }}>
+                {DIAS_SEMANA[d]}{esDiaEscolar && d === dow ? " · hoy" : ""}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {periodos.map((p, i) => (
+            <React.Fragment key={p.n}>
+              {recesoAntes(i) && (
+                <tr><td colSpan={nDias + 1} style={{ padding: "4px 10px", fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: T.inkFaint, background: T.fill, textAlign: "center" }}>
+                  RECESO {periodos[i - 1].fin}–{p.ini}
+                </td></tr>
+              )}
+              <tr>
+                <td style={{ padding: "8px 10px", borderBottom: `1px solid ${T.separator}`, verticalAlign: "top" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{p.n}</div>
+                  <div style={{ fontSize: 11.5, color: T.inkFaint, fontVariantNumeric: "tabular-nums" }}>{fmtP(p)}</div>
+                </td>
+                {Array.from({ length: nDias }, (_, d) => {
+                  const ss = mapa?.[`${d}-${p.n}`] || [];
+                  return (
+                    <td key={d} style={{ padding: 5, borderBottom: `1px solid ${T.separator}`, verticalAlign: "top", background: esAhora(d, p.n) ? T.blueTint : undefined }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {ss.map((s, k) => clase(s, modo, true, k))}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+
+  // ---------- vistas ----------
+  const vistaAhora = () => {
+    const { d, p } = enfoque;
+    const per = periodo(p);
+    const mover = (delta) => {
+      let nd = d, i = periodos.findIndex((x) => x.n === p) + delta;
+      if (i < 0) { nd = (d - 1 + nDias) % nDias; i = periodos.length - 1; }
+      if (i >= periodos.length) { nd = (d + 1) % nDias; i = 0; }
+      setAhoraSel({ d: nd, p: periodos[i].n });
+    };
+    const ocupados = new Set();
+    const filas = horario.grupos.map((g) => {
+      const ss = porGrupo[g.id]?.[`${d}-${p}`] || [];
+      ss.forEach((s) => s.t.forEach((t) => ocupados.add(t)));
+      return { g, ss };
+    });
+    const libres = docentesOrden.filter((t) => !ocupados.has(t.id));
+    const otras = libres.filter((t) => (porDocente[t.id]?.[`${d}-${p}`] || []).length);
+    const sinClase = libres.filter((t) => !(porDocente[t.id]?.[`${d}-${p}`] || []).length);
+    const etiquetas = { "en-curso": "En curso", "primero-hoy": "Primer módulo de hoy", siguiente: "Siguiente módulo", "proximo-dia": "Próximo día de clases" };
+    const etiqueta = ahoraSel ? (esAhora(d, p) ? "En curso" : "") : etiquetas[sugerido.tipo];
+    return (
+      <div>
+        <div style={{ position: "sticky", top: isMobile ? -18 : -26, zIndex: 5, paddingTop: isMobile ? 4 : 0, background: T.bg, marginBottom: 12 }}>
+          <Card style={{ padding: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <IconBtn icon={ChevronLeft} onClick={() => mover(-1)} size={44} />
+              <div style={{ flex: 1, textAlign: "center", minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: etiqueta === "En curso" ? T.blueDark : T.inkFaint, letterSpacing: 0.6, minHeight: 15 }}>{etiqueta.toUpperCase()}</div>
+                <div style={{ fontFamily: headFont, fontSize: 19, fontWeight: 700, color: T.ink }}>{DIAS_SEMANA[d]} · Módulo {p}</div>
+                <div style={{ fontSize: 13.5, color: T.inkSoft, fontVariantNumeric: "tabular-nums" }}>{fmtP(per)}</div>
+              </div>
+              <IconBtn icon={ChevronRight} onClick={() => mover(1)} size={44} />
+            </div>
+            {ahoraSel && (
+              <div style={{ textAlign: "center", marginTop: 4 }}>
+                <Btn kind="text" size="sm" onClick={() => setAhoraSel(null)}>Volver a la hora actual</Btn>
+              </div>
+            )}
+          </Card>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(260px, 1fr))", gap: 8 }}>
+          {filas.map(({ g, ss }) => (
+            <button key={g.id} onClick={() => { setGrupoSel(g.id); setDia(d); setVista("grupo"); }} className="cc-tap" style={{
+              display: "flex", alignItems: "center", gap: 12, padding: 8, borderRadius: 12, border: `1px solid ${T.separator}`,
+              background: T.card, cursor: "pointer", textAlign: "left", width: "100%", font: "inherit",
+            }}>
+              <div style={{ width: 46, height: 46, borderRadius: 10, background: T.fill, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: headFont, fontWeight: 700, fontSize: 17, color: T.ink }}>{g.nombre}</div>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                {ss.length ? ss.map((s, k) => clase(s, "grupo", false, k))
+                  : <div style={{ fontSize: 14, color: T.inkFaint, fontStyle: "italic" }}>Sin clase</div>}
+              </div>
+            </button>
+          ))}
+        </div>
+        {(otras.length > 0 || sinClase.length > 0) && (
+          <Card style={{ padding: 14, marginTop: 12 }}>
+            {sinClase.length > 0 && (
+              <>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: T.inkSoft, marginBottom: 8 }}>Docentes sin grupo en este módulo ({sinClase.length})</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {sinClase.map((t) => (
+                    <button key={t.id} onClick={() => { setDocenteSel(t.id); setDia(d); setVista("docente"); }} className="cc-tap"
+                      style={{ border: `1px solid ${T.separator}`, background: T.fill, borderRadius: 999, padding: "7px 12px", fontSize: 13, fontWeight: 600, color: T.ink, cursor: "pointer" }}>
+                      {titleCase(t.nombre)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {otras.length > 0 && (
+              <div style={{ marginTop: sinClase.length ? 14 : 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: T.inkSoft, marginBottom: 6 }}>Otras actividades</div>
+                {otras.map((t) => (
+                  <div key={t.id} style={{ fontSize: 13.5, color: T.ink, marginBottom: 4 }}>
+                    <strong>{titleCase(t.nombre)}</strong> · {porDocente[t.id][`${d}-${p}`].map((s) => nombreMat(s.m)).join(", ")}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  const horasDocente = (id) => Object.values(porDocente[id] || {}).filter((ss) => ss.some((s) => s.g.length)).length;
+
+  const vistaGrupo = () => {
+    const g = gru[grupoActivo];
+    const grados = [...new Set(horario.grupos.map((x) => x.nombre[0]))];
+    return (
+      <div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          {grados.map((gr) => {
+            const delGrado = horario.grupos.filter((x) => x.nombre[0] === gr);
+            return (
+              <div key={gr} style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(4, delGrado.length)}, 1fr)`, gap: 6, maxWidth: isMobile ? "none" : 420 }}>
+                {delGrado.map((x) => {
+                  const act = x.id === grupoActivo;
+                  return (
+                    <button key={x.id} onClick={() => setGrupoSel(x.id)} className="cc-tap" style={{
+                      border: `1px solid ${act ? T.ink : T.separator}`, background: act ? T.ink : T.card, color: act ? "#fff" : T.ink,
+                      borderRadius: 10, padding: "10px 0", fontFamily: headFont, fontWeight: 700, fontSize: 16, cursor: "pointer",
+                    }}>{x.nombre}</button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+        {g?.tutor && doc[g.tutor] && <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 10 }}>Tutor(a) de {g.nombre}: <strong style={{ color: T.ink }}>{nombreDoc(g.tutor)}</strong></div>}
+        {isMobile ? <>{diaPicker()}{listaDia(porGrupo[grupoActivo], "grupo")}</> : tablaSemana(porGrupo[grupoActivo], "grupo")}
+      </div>
+    );
+  };
+
+  const vistaDocente = () => (
+    <div>
+      <select value={docenteActivo || ""} onChange={(e) => setDocenteSel(e.target.value)} style={{ ...inputStyle, fontWeight: 600, marginBottom: 8, fontSize: 16, maxWidth: isMobile ? "none" : 420 }}>
+        {docentesOrden.map((t) => <option key={t.id} value={t.id}>{titleCase(t.nombre)}</option>)}
+      </select>
+      <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 12 }}>
+        <strong style={{ color: T.ink }}>{horasDocente(docenteActivo)}</strong> horas frente a grupo por semana
+        {horario.grupos.filter((g) => g.tutor === docenteActivo).map((g) => <span key={g.id}> · Tutor(a) de <strong style={{ color: T.ink }}>{g.nombre}</strong></span>)}
+      </div>
+      {isMobile ? <>{diaPicker()}{listaDia(porDocente[docenteActivo], "docente")}</> : tablaSemana(porDocente[docenteActivo], "docente")}
+    </div>
+  );
+
+  return (
+    <div>
+      <ScreenHeader title="Horarios" subtitle={`Ciclo 2026–2027 · actualizado ${fmtDateShort(horario.cargado.slice(0, 10))}`} action={cargarBtn} />
+      {aviso}
+      <div className="no-print" style={{ marginBottom: 14, display: "flex" }}>
+        <div style={{ flex: isMobile ? 1 : "0 0 auto", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", background: T.fill, borderRadius: 10, padding: 3, gap: 3 }}>
+          {[["ahora", "Ahora"], ["grupo", "Por grupo"], ["docente", "Por docente"]].map(([v, l]) => (
+            <button key={v} onClick={() => setVista(v)} className="cc-tap" style={{
+              border: "none", cursor: "pointer", padding: "10px 14px", borderRadius: 8, fontSize: 14, fontWeight: 700,
+              background: vista === v ? T.card : "transparent", color: vista === v ? T.ink : T.inkSoft,
+              boxShadow: vista === v ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+            }}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {vista === "ahora" && vistaAhora()}
+      {vista === "grupo" && vistaGrupo()}
+      {vista === "docente" && vistaDocente()}
     </div>
   );
 }
